@@ -28,7 +28,23 @@ class Level:
         self.player = None
         self._corpses_en_attente = []
 
+        # --- Crochets pour le RoundManager (voir main.py) ---
+        # Compteur de morts du joueur sur ce niveau, et callback optionnel
+        # appelé à chaque mort (branché par main.py sur rm.register_death).
+        self.morts = 0
+        self.on_death = None
+
         self.setup()
+
+    def is_complete(self) -> bool:
+        """
+        Indique si la consigne du round est remplie.
+
+        Comportement par défaut : jamais complété (le round ne se termine alors
+        que par le chrono). Chaque niveau concret surchargera cette méthode avec
+        sa vraie condition de victoire (atteindre une sortie, etc.).
+        """
+        return False
 
     def setup(self):
         """
@@ -103,6 +119,11 @@ class Level:
         """Mémorise le corps, qui apparaîtra à la fin de l'animation de mort."""
         self._corpses_en_attente.append((self.player.center_x, self.player.center_y))
         self.player.take_hit()
+
+        # Signale la mort au reste du jeu (compteur + RoundManager).
+        self.morts += 1
+        if self.on_death is not None:
+            self.on_death()
 
     def _ajouter_corps_termines(self):
         """Ajoute les corps dont l'animation de mort est terminée."""
