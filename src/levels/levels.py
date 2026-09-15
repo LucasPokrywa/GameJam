@@ -1,8 +1,19 @@
+import os
+import random
+
 import arcade
+from PIL import Image
 from entities.player import Player
 from entities.turret import Turret
 from entities.bullet import Bullet
 from entities.corpse import Corpse
+
+
+DOSSIER_MAP_NIVEAU1 = os.path.join(
+    os.path.dirname(__file__), "..", "..", "assets", "images", "map1"
+)
+CHEMIN_FOND_NIVEAU1 = os.path.join(DOSSIER_MAP_NIVEAU1, "map_niveau1.png")
+CHEMIN_MURS_NIVEAU1 = os.path.join(DOSSIER_MAP_NIVEAU1, "mur_map_niveau1.png")
 
 
 class Level:
@@ -18,6 +29,7 @@ class Level:
         self.window_width = window_width
         self.window_height = window_height
         self.background_color = background_color
+        self.background = arcade.SpriteList()
 
         # Sprites de décor / obstacles (pour les collisions plus tard)
         self.walls = arcade.SpriteList()
@@ -45,6 +57,67 @@ class Level:
         sa vraie condition de victoire (atteindre une sortie, etc.).
         """
         return False
+        self.holes = [[484,236],
+                      [574,207],
+                      [275,172],
+                      [330,388]]
+
+        self.setup()
+
+    def _charger_decor_niveau1(self):
+        """Charge le fond et convertit les pixels opaques du masque en murs."""
+        fond = arcade.Sprite(CHEMIN_FOND_NIVEAU1)
+        fond.center_x = self.window_width / 2
+        fond.center_y = self.window_height / 2
+        fond.width = self.window_width
+        fond.height = self.window_height
+        self.background.append(fond)
+
+        image_murs = Image.open(CHEMIN_MURS_NIVEAU1).convert("RGBA")
+        largeur_image, hauteur_image = image_murs.size
+        echelle_x = self.window_width / largeur_image
+        echelle_y = self.window_height / hauteur_image
+        bandes_actives = {}
+
+        for y in range(hauteur_image):
+            x = 0
+            while x < largeur_image:
+                while x < largeur_image and image_murs.getpixel((x, y))[3] == 0:
+                    x += 1
+                debut = x
+                while x < largeur_image and image_murs.getpixel((x, y))[3] != 0:
+                    x += 1
+                if debut == x:
+                    continue
+
+                fin = x
+                cle = (debut, fin)
+                bande = bandes_actives.get(cle)
+                if bande is not None and bande[3] == y:
+                    bande[3] = y + 1
+                else:
+                    if bande is not None:
+                        self._ajouter_mur_rectangle(bande, echelle_x, echelle_y, hauteur_image)
+                    bandes_actives[cle] = [debut, fin, y, y + 1]
+
+        for bande in bandes_actives.values():
+            self._ajouter_mur_rectangle(bande, echelle_x, echelle_y, hauteur_image)
+
+    def _ajouter_mur_rectangle(self, bande, echelle_x, echelle_y, hauteur_image):
+        """Ajoute un rectangle invisible correspondant à une bande opaque."""
+        debut_x, fin_x, debut_y, fin_y = bande
+        if fin_y <= debut_y:
+            return
+
+        mur = arcade.SpriteSolidColor(
+            max(1, round((fin_x - debut_x) * echelle_x)),
+            max(1, round((fin_y - debut_y) * echelle_y)),
+            arcade.color.WHITE,
+        )
+        mur.center_x = ((debut_x + fin_x) / 2) * echelle_x
+        mur.center_y = self.window_height - ((debut_y + fin_y) / 2) * echelle_y
+        mur.alpha = 0
+        self.walls.append(mur)
 
     def setup(self):
         """
@@ -61,6 +134,7 @@ class Level:
                     self.entities.append(self.player)
                     # ajouter des murs, ennemis, etc.
         """
+        self._charger_decor_niveau1()
         self.player = Player(center_x=self.window_width // 2, center_y=self.window_height // 2)
         self.entities.append(self.player)
 
@@ -74,6 +148,7 @@ class Level:
         self._ajouter_corps_termines()
         self._gerer_collisions_balles()
         self._resoudre_collisions_solides()
+        self._gerer_colision_trou()
 
         marge = 60  # tolérance en pixels avant de considérer une entité "hors écran"
         for entity in list(self.entities):
@@ -134,6 +209,31 @@ class Level:
             self.walls.append(Corpse(center_x=center_x, center_y=center_y))
         self._corpses_en_attente.clear()
 
+    
+    def teleport_player_hole_alea(self):
+        trou = self.player.center_x % 4
+        coord = self.holes[trou] 
+        self.player.center_x, self.player.center_y = coord
+
+    def _gerer_colision_trou(self):
+        px, py = self.player.center_x, self.player.center_y
+        dx = 18
+        for index_trou, (x, y) in enumerate(self.holes):
+            if (x - dx <= px <= x + dx) and (y - dx <= py <= y + dx):
+                self.teleport_player_hole_alea(index_trou)
+                return
+
+    def teleport_player_hole_alea(self, trou):
+        index_trou = random.randrange(len(self.holes))
+
+        while index_trou == trou:
+            index_trou = random.randrange(len(self.holes))
+
+        x, y = self.holes[index_trou]
+
+        self.player.center_x = x - 55
+        self.player.center_y = y
+
     def _resoudre_collisions_solides(self):
         """
         Empêche le joueur de traverser les murs/obstacles (dont les Corpse).
@@ -165,8 +265,9 @@ class Level:
                 self.player.change_y = 0
 
     def draw(self):
-        self.walls.draw()
-        self.entities.draw()
+        self.background.draw(pixelated=True)
+        self.walls.draw(pixelated=True)
+        self.entities.draw(pixelated=True)
 
 
 class EmptyLevel(Level):
@@ -182,12 +283,13 @@ class TurretDemoLevel(Level):
     """
 
     def setup(self):
+        self._charger_decor_niveau1()
         self.player = Player(center_x=self.window_width // 2, center_y=100)
         self.entities.append(self.player)
 
         tourelle = Turret(
             center_x=self.window_width // 2,
-            center_y=self.window_height - 100,
+            center_y=self.window_height - 200,
             level=self,
             player=self.player,
             fire_interval=1.2,
