@@ -2,4 +2,7 @@ python -m venv .venv
 
 .venv\Scripts\activate.bat
 
-pip install -r requirements.txt
+.venv\Scripts\pip.exe pip install -r requirements.txt
+
+
+.venv\Scripts\python.exe src\main.py
