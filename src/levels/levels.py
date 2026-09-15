@@ -1,4 +1,5 @@
 import os
+import random
 
 import arcade
 from PIL import Image
@@ -38,6 +39,11 @@ class Level:
 
         self.player = None
         self._corpses_en_attente = []
+
+        self.holes = [[484,236],
+                      [574,207],
+                      [275,172],
+                      [330,388]]
 
         self.setup()
 
@@ -125,6 +131,7 @@ class Level:
         self._ajouter_corps_termines()
         self._gerer_collisions_balles()
         self._resoudre_collisions_solides()
+        self._gerer_colision_trou()
 
         marge = 60  # tolérance en pixels avant de considérer une entité "hors écran"
         for entity in list(self.entities):
@@ -179,6 +186,31 @@ class Level:
         for center_x, center_y in self._corpses_en_attente:
             self.walls.append(Corpse(center_x=center_x, center_y=center_y))
         self._corpses_en_attente.clear()
+
+    
+    def teleport_player_hole_alea(self):
+        trou = self.player.center_x % 4
+        coord = self.holes[trou] 
+        self.player.center_x, self.player.center_y = coord
+
+    def _gerer_colision_trou(self):
+        px, py = self.player.center_x, self.player.center_y
+        dx = 18
+        for index_trou, (x, y) in enumerate(self.holes):
+            if (x - dx <= px <= x + dx) and (y - dx <= py <= y + dx):
+                self.teleport_player_hole_alea(index_trou)
+                return
+
+    def teleport_player_hole_alea(self, trou):
+        index_trou = random.randrange(len(self.holes))
+
+        while index_trou == trou:
+            index_trou = random.randrange(len(self.holes))
+
+        x, y = self.holes[index_trou]
+
+        self.player.center_x = x - 55
+        self.player.center_y = y
 
     def _resoudre_collisions_solides(self):
         """
