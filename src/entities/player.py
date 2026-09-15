@@ -1,5 +1,5 @@
 import arcade
-from entities.entities import Entity
+from entities import Entity
 
 
 class Player(Entity):
@@ -13,7 +13,10 @@ class Player(Entity):
             center_x=center_x,
             center_y=center_y,
         )
-        self.speed = 250
+        # Réglages physiques spécifiques au joueur (hérités d'Entity, ajustables ici)
+        self.acceleration = 900.0
+        self.friction = 700.0
+        self.max_speed = 300.0
 
         # État des touches actuellement enfoncées
         self.moving_up = False
@@ -55,11 +58,20 @@ class Player(Entity):
         if self.moving_right:
             dx += 1
 
-        # Normalisation pour ne pas aller plus vite en diagonale
-        if dx != 0 and dy != 0:
-            norme = (dx ** 2 + dy ** 2) ** 0.5
-            dx /= norme
-            dy /= norme
+        if dx != 0 or dy != 0:
+            # Normalisation pour ne pas accélérer plus vite en diagonale
+            if dx != 0 and dy != 0:
+                norme = (dx ** 2 + dy ** 2) ** 0.5
+                dx /= norme
+                dy /= norme
 
-        self.center_x += dx * self.speed * delta_time
-        self.center_y += dy * self.speed * delta_time
+            # On accélère dans la direction voulue : la vélocité actuelle
+            # (change_x/change_y) est conservée et réorientée petit à petit,
+            # d'où l'effet d'inertie quand on change de direction.
+            self.apply_acceleration(dx, dy, delta_time)
+        else:
+            # Aucune touche pressée : on freine progressivement jusqu'à l'arrêt.
+            self.apply_friction(delta_time)
+
+        # Intègre change_x/change_y dans center_x/center_y (défini dans Entity)
+        super().update(delta_time)
