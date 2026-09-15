@@ -1,5 +1,5 @@
 import arcade
-from levels.levels import EmptyLevel
+from levels.levels import TurretDemoLevel
 
 LARGEUR_ECRAN = 800
 HAUTEUR_ECRAN = 600
@@ -13,7 +13,7 @@ class MonJeu(arcade.Window):
 
     def setup(self):
         """Initialise le niveau de départ."""
-        self.level = EmptyLevel(LARGEUR_ECRAN, HAUTEUR_ECRAN)
+        self.level = TurretDemoLevel(LARGEUR_ECRAN, HAUTEUR_ECRAN)
         arcade.set_background_color(self.level.background_color)
 
     def on_draw(self):

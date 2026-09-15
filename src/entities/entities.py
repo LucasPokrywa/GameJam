@@ -33,7 +33,13 @@ class Entity(arcade.SpriteSolidColor):
         self.frame_duration = 0.1       # secondes passées sur chaque frame
         self.time_since_last_frame = 0.0
         self.animation_playing = True   # si False, l'animation reste figée sur sa frame courante
-        self.direction = "bas"  # direction affichée par défaut (utile pour idle)
+
+        # --- Comportement aux limites de l'écran, géré par Level.update() ---
+        # True  -> l'entité est bloquée dans l'écran (ex: le joueur)
+        # False -> l'entité est détruite dès qu'elle sort complètement de
+        #          l'écran (ex: une balle qui doit continuer en ligne droite
+        #          sans jamais rester coincée sur un bord)
+        self.clamp_to_bounds = True
 
     def load_animation(self, name, spritesheet_path, frame_width, frame_height,
                         frame_count, row=0, miroir_horizontal=False):
