@@ -26,6 +26,7 @@ class Player(Entity):
         self.acceleration = 1800.0
         self.friction = 1400.0
         self.max_speed = 500.0
+        self.direction = "bas"  # direction affichée par défaut
 
         self.frame_duration = 0.08  # vitesse de l'animation (secondes par frame)
 
@@ -38,8 +39,8 @@ class Player(Entity):
         self.scale = TAILLE_AFFICHAGE / TAILLE_FRAME *8
 
         # Direction affichée par défaut, au repos
-        self.set_animation_direction("run_bas")
-        self.set_animation_playing(False)
+        self.set_animation_direction("idle_{}".format(self.direction))
+        self.set_animation_playing(True)
 
         # État des touches actuellement enfoncées
         self.moving_up = False
@@ -65,6 +66,27 @@ class Player(Entity):
         self.load_animation(
             "run_gauche", os.path.join(DOSSIER_ASSETS, "Run/Run_34F.png"),
             TAILLE_FRAME, TAILLE_FRAME, NB_FRAMES_COURSE,
+            miroir_horizontal=True,
+        )
+
+        self.load_animation(
+            "idle_bas", os.path.join(DOSSIER_ASSETS, "Idle/Idle_F.png"),
+            TAILLE_FRAME, TAILLE_FRAME, 8,
+        )
+
+        self.load_animation(
+            "idle_haut", os.path.join(DOSSIER_ASSETS, "Idle/Idle_B.png"),
+            TAILLE_FRAME, TAILLE_FRAME, 8,
+        )
+
+        self.load_animation(
+            "idle_droite", os.path.join(DOSSIER_ASSETS, "Idle/Idle_34F.png"),
+            TAILLE_FRAME, TAILLE_FRAME, 8,
+        )
+
+        self.load_animation(
+            "idle_gauche", os.path.join(DOSSIER_ASSETS, "Idle/Idle_34F.png"),
+            TAILLE_FRAME, TAILLE_FRAME, 8,
             miroir_horizontal=True,
         )
 
@@ -122,19 +144,22 @@ class Player(Entity):
         # privilégie l'axe horizontal, qui est visuellement plus lisible avec
         # la vue 3/4 dont on dispose.
         if dx > 0:
-            self.set_animation_direction("run_droite")
+            self.direction = "droite"
         elif dx < 0:
-            self.set_animation_direction("run_gauche")
+            self.direction = "gauche"
         elif dy > 0:
-            self.set_animation_direction("run_haut")
+            self.direction = "haut"
         elif dy < 0:
-            self.set_animation_direction("run_bas")
+            self.direction = "bas"
 
         # L'animation ne tourne que si le personnage bouge réellement
         # (utile pendant la phase de freinage, où l'input a cessé mais la
         # vélocité n'est pas encore à zéro).
         vitesse = (self.change_x ** 2 + self.change_y ** 2) ** 0.5
-        self.set_animation_playing(vitesse > 5)
+        if vitesse <= 5:
+            self.set_animation_direction("idle_{}".format(self.direction))
+        else:
+            self.set_animation_direction("run_{}".format(self.direction))
 
         # Intègre change_x/change_y dans center_x/center_y + fait avancer
         # l'animation (défini dans Entity)

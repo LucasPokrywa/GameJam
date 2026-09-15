@@ -33,6 +33,7 @@ class Entity(arcade.SpriteSolidColor):
         self.frame_duration = 0.1       # secondes passées sur chaque frame
         self.time_since_last_frame = 0.0
         self.animation_playing = True   # si False, l'animation reste figée sur sa frame courante
+        self.direction = "bas"  # direction affichée par défaut (utile pour idle)
 
     def load_animation(self, name, spritesheet_path, frame_width, frame_height,
                         frame_count, row=0, miroir_horizontal=False):
