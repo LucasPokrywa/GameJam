@@ -1,6 +1,5 @@
 # Game
 arcade>=3.3.3
-pygame>=2.6.1
 
 # Graphics
 numpy>=2.3.3
