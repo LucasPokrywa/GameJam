@@ -1,5 +1,14 @@
+import os
+
 import arcade
 from entities.entities import Entity
+
+# Dossier contenant les spritesheets du joueur (voir assets/player/)
+DOSSIER_ASSETS = os.path.join(os.path.dirname(__file__), "assets", "player")
+
+TAILLE_FRAME = 64    # chaque frame des spritesheets fait 64x64 px (résolution native)
+TAILLE_AFFICHAGE = 16   # taille voulue à l'écran (px) -> ajuste cette valeur pour agrandir/réduire le perso
+NB_FRAMES_COURSE = 6    # nombre de frames dans l'animation de course
 
 
 class Player(Entity):
@@ -7,22 +16,57 @@ class Player(Entity):
 
     def __init__(self, center_x=0, center_y=0):
         super().__init__(
-            width=40,
-            height=40,
+            width=TAILLE_AFFICHAGE,
+            height=TAILLE_AFFICHAGE,
             color=arcade.color.GREEN,
             center_x=center_x,
             center_y=center_y,
         )
         # Réglages physiques spécifiques au joueur (hérités d'Entity, ajustables ici)
-        self.acceleration = 2000.0
-        self.friction = 700.0
-        self.max_speed = 300.0
+        self.acceleration = 1800.0
+        self.friction = 1400.0
+        self.max_speed = 500.0
+
+        self.frame_duration = 0.08  # vitesse de l'animation (secondes par frame)
+
+        self._charger_animations()
+
+        # Chaque frame chargée fait TAILLE_FRAME px de large nativement ; Arcade
+        # recalcule width/height = texture.width * scale à chaque changement de
+        # frame, donc c'est `scale` qu'il faut fixer pour garder une taille
+        # affichée constante, plutôt que width/height (qui seraient écrasés).
+        self.scale = TAILLE_AFFICHAGE / TAILLE_FRAME *8
+
+        # Direction affichée par défaut, au repos
+        self.set_animation_direction("run_bas")
+        self.set_animation_playing(False)
 
         # État des touches actuellement enfoncées
         self.moving_up = False
         self.moving_down = False
         self.moving_left = False
         self.moving_right = False
+
+    def _charger_animations(self):
+        """Découpe les spritesheets et enregistre une animation par direction."""
+        self.load_animation(
+            "run_bas", os.path.join(DOSSIER_ASSETS, "Run/Run_F.png"),
+            TAILLE_FRAME, TAILLE_FRAME, NB_FRAMES_COURSE,
+        )
+        self.load_animation(
+            "run_haut", os.path.join(DOSSIER_ASSETS, "Run/Run_Back.png"),
+            TAILLE_FRAME, TAILLE_FRAME, NB_FRAMES_COURSE,
+        )
+        self.load_animation(
+            "run_droite", os.path.join(DOSSIER_ASSETS, "Run/Run_34F.png"),
+            TAILLE_FRAME, TAILLE_FRAME, NB_FRAMES_COURSE,
+        )
+        # Pas de spritesheet dédiée pour la gauche : on retourne la vue 3/4
+        self.load_animation(
+            "run_gauche", os.path.join(DOSSIER_ASSETS, "Run/Run_34F.png"),
+            TAILLE_FRAME, TAILLE_FRAME, NB_FRAMES_COURSE,
+            miroir_horizontal=True,
+        )
 
     def on_key_press(self, key):
         """Appelé par la fenêtre principale quand une touche est pressée."""
@@ -73,5 +117,25 @@ class Player(Entity):
             # Aucune touche pressée : on freine progressivement jusqu'à l'arrêt.
             self.apply_friction(delta_time)
 
-        # Intègre change_x/change_y dans center_x/center_y (défini dans Entity)
+        # --- Choix de la direction affichée ---
+        # On n'a que 4 animations (haut/bas/gauche/droite) : en diagonale, on
+        # privilégie l'axe horizontal, qui est visuellement plus lisible avec
+        # la vue 3/4 dont on dispose.
+        if dx > 0:
+            self.set_animation_direction("run_droite")
+        elif dx < 0:
+            self.set_animation_direction("run_gauche")
+        elif dy > 0:
+            self.set_animation_direction("run_haut")
+        elif dy < 0:
+            self.set_animation_direction("run_bas")
+
+        # L'animation ne tourne que si le personnage bouge réellement
+        # (utile pendant la phase de freinage, où l'input a cessé mais la
+        # vélocité n'est pas encore à zéro).
+        vitesse = (self.change_x ** 2 + self.change_y ** 2) ** 0.5
+        self.set_animation_playing(vitesse > 5)
+
+        # Intègre change_x/change_y dans center_x/center_y + fait avancer
+        # l'animation (défini dans Entity)
         super().update(delta_time)
