@@ -1,4 +1,5 @@
 import os
+import random
 
 import arcade
 from PIL import Image
@@ -195,15 +196,19 @@ class Level:
     def _gerer_colision_trou(self):
         px, py = self.player.center_x, self.player.center_y
         dx = 18
-        for x, y in self.holes:
+        for index_trou, (x, y) in enumerate(self.holes):
             if (x - dx <= px <= x + dx) and (y - dx <= py <= y + dx):
-                self.teleport_player_hole_alea()
+                self.teleport_player_hole_alea(index_trou)
                 return
 
-    def teleport_player_hole_alea(self):
-        index_trou = int(self.player.center_x) % len(self.holes)
+    def teleport_player_hole_alea(self, trou):
+        index_trou = random.randrange(len(self.holes))
+
+        while index_trou == trou:
+            index_trou = random.randrange(len(self.holes))
+
         x, y = self.holes[index_trou]
-        
+
         self.player.center_x = x - 55
         self.player.center_y = y
 
