@@ -1,5 +1,5 @@
 import arcade
-from entities import Entity
+from entities.entities import Entity
 
 
 class Player(Entity):
@@ -14,7 +14,7 @@ class Player(Entity):
             center_y=center_y,
         )
         # Réglages physiques spécifiques au joueur (hérités d'Entity, ajustables ici)
-        self.acceleration = 900.0
+        self.acceleration = 2000.0
         self.friction = 700.0
         self.max_speed = 300.0
 
