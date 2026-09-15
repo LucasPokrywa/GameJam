@@ -1,0 +1,13 @@
+# Game
+arcade>=3.3.3
+pygame>=2.6.1
+
+# Graphics
+numpy>=2.3.3
+pillow>=11.3.0
+
+# Config
+pyyaml>=6.0.2
+
+# Tests
+pytest>=8.4.2
