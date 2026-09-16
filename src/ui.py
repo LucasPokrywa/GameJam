@@ -231,12 +231,15 @@ def draw_fond_ambiance(largeur, hauteur, sang_alpha=100):
 # HUD en jeu
 # --------------------------------------------------------------------------- #
 
-def draw_hud(rm, largeur, hauteur):
+def draw_hud(rm, largeur, hauteur, objectif=None):
     """
     HUD affiché pendant qu'un round est EN_COURS :
-      - le timer (grand, centré en haut, rouge quand le temps devient court) ;
-      - le compteur de morts (coin haut-gauche) ;
-      - le numéro de round et sa consigne (coin haut-droit).
+      - le timer, seul, en haut à gauche (rouge quand le temps devient court) ;
+      - en haut à droite : le numéro de round + la condition de victoire.
+
+    `objectif` : lignes de la condition de victoire (ex. les sacrifices restants
+    fournis par le niveau). Si None, on retombe sur la consigne du round.
+    Le compteur de morts / os est affiché en bas à gauche par le niveau.
     """
     # --- Timer (coin haut-gauche) ---
     restant = rm.temps_restant
@@ -250,17 +253,7 @@ def draw_hud(rm, largeur, hauteur):
         font_name=NOM_POLICE, bold=True,
     )
 
-    # --- Compteur de morts, juste en dessous du timer ---
-    arcade.draw_text(
-        "Morts : {}".format(rm.compute_score()),
-        12, hauteur - 56,
-        COULEUR_TEXTE,
-        font_size=16,
-        anchor_x="left", anchor_y="center",
-        font_name=NOM_POLICE,
-    )
-
-    # --- Round + consigne (coin haut-droit) ---
+    # --- Round + condition de victoire (coin haut-droit) ---
     arcade.draw_text(
         "Round {}/{}".format(rm.numero_courant, len(rm.rounds)),
         largeur - 12, hauteur - 20,
@@ -270,7 +263,7 @@ def draw_hud(rm, largeur, hauteur):
         font_name=NOM_POLICE, bold=True,
     )
     arcade.draw_text(
-        rm.config_courante.consigne,
+        objectif if objectif else rm.config_courante.consigne,
         largeur - 12, hauteur - 40,
         COULEUR_TEXTE,
         font_size=12,
