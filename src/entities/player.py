@@ -127,12 +127,15 @@ class Player(Entity):
     def is_vulnerable(self) -> bool:
         return self.state is PlayerState.ALIVE and self._invulnerability_timer <= 0.0
 
-    def take_hit(self, source=None):
-        """A hit absorbed by the resistance bonus does not kill."""
+    def take_hit(self, source=None, fatal=False):
+        """
+        A hit absorbed by the resistance bonus does not kill. `fatal` skips
+        that absorption: drowning or falling kills whatever the player carries.
+        """
         if not self.is_vulnerable:
             return False
 
-        if self.resistance_bonus > 0:
+        if not fatal and self.resistance_bonus > 0:
             self.resistance_bonus -= 1
             self._invulnerability_timer = INVULNERABILITY_DURATION
             return False

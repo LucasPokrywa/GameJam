@@ -14,6 +14,7 @@ SCALE_FACTOR = 2
 class CorpseType(Enum):
     WALL = "wall"
     BONES = "bones"
+    RAFT = "raft"
 
 
 class CorpseState(Enum):
@@ -23,28 +24,34 @@ class CorpseState(Enum):
 
 
 # Exhaustive on purpose: a new DeathCause must be mapped here explicitly
-# rather than silently falling back to some default corpse.
+# rather than silently falling back to some default corpse. None means the
+# body is lost and nothing is left behind.
 CAUSE_TO_TYPE = {
     DeathCause.TOWER: CorpseType.WALL,
     DeathCause.ZOMBIE: CorpseType.BONES,
+    DeathCause.DROWNING: CorpseType.RAFT,
+    DeathCause.VOID: None,
     DeathCause.NONE: CorpseType.WALL,
 }
 
 SPRITES = {
     CorpseType.WALL: "corpse_wall.png",
     CorpseType.BONES: "corpse_bones.png",
+    CorpseType.RAFT: "corpse_raft.png",
 }
 FALLBACK_SPRITE = "corpse.png"
 FALLBACK_TINTS = {
     CorpseType.WALL: (150, 155, 165),
     CorpseType.BONES: (255, 240, 200),
+    CorpseType.RAFT: (90, 130, 170),
 }
 
 
 class Corpse(Entity):
     """
     Body left where the player died. Its type follows the cause of death:
-    WALL blocks movement and arrows, BONES can be picked up.
+    WALL blocks movement and arrows, BONES can be picked up, RAFT floats and
+    is walked on.
     """
 
     def __init__(self, center_x=0, center_y=0, corpse_type=CorpseType.WALL):
@@ -66,7 +73,11 @@ class Corpse(Entity):
 
     @classmethod
     def from_death_cause(cls, death_cause, center_x, center_y):
-        return cls(center_x, center_y, CAUSE_TO_TYPE[death_cause])
+        """None when the cause leaves no body, e.g. falling into the void."""
+        corpse_type = CAUSE_TO_TYPE[death_cause]
+        if corpse_type is None:
+            return None
+        return cls(center_x, center_y, corpse_type)
 
     def _load_sprite(self):
         path = os.path.join(ASSETS_DIR, SPRITES[self.corpse_type])
@@ -91,6 +102,10 @@ class Corpse(Entity):
 
     def is_pickable(self) -> bool:
         return self.corpse_type is CorpseType.BONES and self.state is CorpseState.ACTIVE
+
+    def bridges_hazard(self) -> bool:
+        """A floating body makes the water under it walkable."""
+        return self.corpse_type is CorpseType.RAFT and self.state is CorpseState.ACTIVE
 
     def is_sacrificable(self) -> bool:
         return self.state is CorpseState.ACTIVE
