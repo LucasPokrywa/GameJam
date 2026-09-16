@@ -1,159 +1,248 @@
+import math
 import os
 import random
 
 import arcade
 from PIL import Image
+
+from entities.altar import SacrificeAltar
+from entities.corpse import Corpse, CorpseType
+from entities.bullet import Bullet
+from entities.enemy import Zombie
+from entities.entities import Entity
 from entities.player import Player
 from entities.turret import Turret
-from entities.bullet import Bullet
-from entities.corpse import Corpse
 
-
-DOSSIER_MAP_NIVEAU1 = os.path.join(
+LEVEL1_MAP_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "assets", "images", "map1"
 )
-CHEMIN_FOND_NIVEAU1 = os.path.join(DOSSIER_MAP_NIVEAU1, "map_niveau1.png")
-CHEMIN_MURS_NIVEAU1 = os.path.join(DOSSIER_MAP_NIVEAU1, "mur_map_niveau1.png")
+LEVEL1_FLOOR = os.path.join(LEVEL1_MAP_DIR, "map_niveau1.png")
+LEVEL1_WALL_MASK = os.path.join(LEVEL1_MAP_DIR, "mur_map_niveau1.png")
+LEVEL1_WATER = os.path.join(LEVEL1_MAP_DIR, "eau_map_niveau1.png")
+LEVEL1_PROPS = os.path.join(LEVEL1_MAP_DIR, "decors_map_niveau1.png")
+LEVEL1_DOOR = os.path.join(LEVEL1_MAP_DIR, "porte_map_niveau1.png")
+
+MAP_SIZE = 256   # the map1 PNGs are 256x256
+
+# Everything below is expressed in that 256x256 artwork space and converted
+# with world_point(), so the level follows the window instead of assuming the
+# 800x600 it was designed in.
+#
+# The map is square and drawn with a single uniform scale, letterboxed in the
+# window: stretching it to the window ratio turned 16 px tiles into rectangles
+# (1.78x on a 16:9 screen) and the round holes into ovals.
+REFERENCE_SCALE = 600 / MAP_SIZE
+
+# Both boxes are measured on the artwork above, in image coordinates.
+DOOR_GAP = (112, 0, 144, 48)      # punched out of the wall mask
+DOOR_PANEL = (112, 32, 144, 47)   # visible panel, aligned on the stone band
+DOOR_PANEL_COLOR = (120, 80, 50)
+DOORWAY_COLOR = (26, 22, 38)      # same dark as outside the room
+
+# Holes painted into the map1 floor, measured on the artwork: each is a
+# 14x14 image-space square. Walking into one drops the player next to
+# another, picked at random.
+LEVEL1_HOLES = [
+    (87, 183),
+    (103, 87),
+    (119, 119),
+    (183, 167),
+]
+HOLE_HALF = 7          # image px
+HOLE_EXIT_GAP = 3      # image px below the hole, clear of its trigger box
 
 
 class Level:
     """
-    Classe de base pour tous les niveaux du jeu.
-
-    Chaque niveau définit son décor (murs, obstacles) et ses entités
-    (joueur, ennemis, objets...). Pour créer un nouveau niveau, hérite de
-    cette classe et surcharge la méthode setup().
+    Base class for every level: scenery, entities, and the per-frame rules
+    binding them together.
     """
 
-    def __init__(self, window_width, window_height, background_color=arcade.color.DARK_SLATE_GRAY):
+    def __init__(self, window_width, window_height,
+                 background_color=arcade.color.DARK_SLATE_GRAY):
         self.window_width = window_width
         self.window_height = window_height
         self.background_color = background_color
         self.background = arcade.SpriteList()
 
-        # Sprites de décor / obstacles (pour les collisions plus tard)
+        # Uniform scale, and the offset that centres the square map.
+        self.map_scale = min(window_width, window_height) / MAP_SIZE
+        self.map_size = MAP_SIZE * self.map_scale
+        self.map_left = (window_width - self.map_size) / 2
+        self.map_bottom = (window_height - self.map_size) / 2
+
         self.walls = arcade.SpriteList()
 
-        # Toutes les entités présentes dans le niveau, y compris le joueur
+        # Kept apart from walls: depending on their type corpses either block
+        # the way or get picked up.
+        self.corpses = arcade.SpriteList()
+
+        # Also held in self.entities; see add_enemy().
+        self.enemies = arcade.SpriteList()
+
         self.entities = arcade.SpriteList()
 
         self.player = None
-        self._corpses_en_attente = []
+        self.altar = None
+        self.holes = []      # world coordinates, filled from image space
+        self.on_death = None   # wired by main.py to RoundManager.register_death
 
-        # --- Crochets pour le RoundManager (voir main.py) ---
-        # Compteur de morts du joueur sur ce niveau, et callback optionnel
-        # appelé à chaque mort (branché par main.py sur rm.register_death).
-        self.morts = 0
-        self.on_death = None
+        self._solid_obstacles_cache = []
+        self._shot_obstacles_cache = []
 
         self.setup()
+
+        # The player notifies the level while still standing where it died,
+        # so the corpse drops in the right place.
+        if self.player is not None:
+            self.player.on_death = self._on_player_death
+
+    def _layer(self, path):
+        """Loads one map1 PNG, square and centred in the window."""
+        layer = arcade.Sprite(path)
+        layer.center_x = self.map_left + self.map_size / 2
+        layer.center_y = self.map_bottom + self.map_size / 2
+        layer.width = self.map_size
+        layer.height = self.map_size
+        return layer
+
+    @property
+    def sprite_scale(self) -> float:
+        """Entities grow with the map they stand on."""
+        return self.map_scale / REFERENCE_SCALE
+
+    # Attributes expressed in pixels, or pixels per second, which must grow
+    # with the window alongside the sprite itself.
+    SCALED_ATTRIBUTES = ("max_speed", "acceleration", "friction",
+                         "detection_range", "bullet_speed")
+
+    def scale_to_window(self, sprite, speeds=True):
+        factor = self.sprite_scale
+        if factor == 1.0:
+            return sprite
+
+        current = sprite.scale
+        base = current[0] if hasattr(current, "__getitem__") else current
+        sprite.scale = base * factor
+
+        if not speeds:
+            return sprite
+
+        for name in self.SCALED_ATTRIBUTES:
+            value = getattr(sprite, name, None)
+            if value:
+                setattr(sprite, name, value * factor)
+        return sprite
+
+    def world_point(self, image_x, image_y):
+        """Turns a point of the 256x256 artwork into world coordinates."""
+        return (
+            self.map_left + image_x * self.map_scale,
+            self.map_bottom + (MAP_SIZE - image_y) * self.map_scale,
+        )
+
+    def world_length(self, image_length) -> float:
+        return image_length * self.map_scale
+
+    def world_rect(self, image_box):
+        """Turns a box of the 256x256 artwork into (center_x, center_y, w, h)."""
+        x0, y0, x1, y1 = image_box
+        center_x, center_y = self.world_point((x0 + x1) / 2, (y0 + y1) / 2)
+        return center_x, center_y, self.world_length(x1 - x0), self.world_length(y1 - y0)
+
+    def _load_level1_scenery(self, gap=None):
+        """
+        Map1 layers, then the opaque pixels of the mask turned into walls.
+        `gap` (image coordinates) is ignored from the mask, which is how the
+        doorway gets punched through the top wall.
+        """
+        self.background.append(self._layer(LEVEL1_FLOOR))
+        self.background.append(self._layer(LEVEL1_WATER))
+        self.background.append(self._layer(LEVEL1_PROPS))
+
+        mask = Image.open(LEVEL1_WALL_MASK).convert("RGBA")
+        mask_width, mask_height = mask.size
+        open_runs = {}
+
+        def is_wall(x, y):
+            if gap is not None:
+                x0, y0, x1, y1 = gap
+                if x0 <= x < x1 and y0 <= y < y1:
+                    return False
+            return mask.getpixel((x, y))[3] != 0
+
+        for y in range(mask_height):
+            x = 0
+            while x < mask_width:
+                while x < mask_width and not is_wall(x, y):
+                    x += 1
+                start = x
+                while x < mask_width and is_wall(x, y):
+                    x += 1
+                if start == x:
+                    continue
+
+                end = x
+                key = (start, end)
+                run = open_runs.get(key)
+                if run is not None and run[3] == y:
+                    run[3] = y + 1
+                else:
+                    if run is not None:
+                        self._add_wall_rect(run)
+                    open_runs[key] = [start, end, y, y + 1]
+
+        for run in open_runs.values():
+            self._add_wall_rect(run)
+
+    def _add_wall_rect(self, run):
+        """Invisible rectangle matching one opaque run of the mask."""
+        start_x, end_x, start_y, end_y = run
+        if end_y <= start_y:
+            return
+
+        wall = arcade.SpriteSolidColor(
+            max(1, round(self.world_length(end_x - start_x))),
+            max(1, round(self.world_length(end_y - start_y))),
+            color=arcade.color.WHITE,
+        )
+        wall.center_x, wall.center_y = self.world_point(
+            (start_x + end_x) / 2, (start_y + end_y) / 2
+        )
+        wall.alpha = 0
+        self.walls.append(wall)
 
     def is_complete(self) -> bool:
         """
-        Indique si la consigne du round est remplie.
-
-        Comportement par défaut : jamais complété (le round ne se termine alors
-        que par le chrono). Chaque niveau concret surchargera cette méthode avec
-        sa vraie condition de victoire (atteindre une sortie, etc.).
+        Whether the round objective is met. Never, by default: such a round
+        can only end on the clock. Concrete levels override this.
         """
         return False
-        self.holes = [[484,236],
-                      [574,207],
-                      [275,172],
-                      [330,388]]
-
-        self.setup()
-
-    def _charger_decor_niveau1(self):
-        """Charge le fond et convertit les pixels opaques du masque en murs."""
-        fond = arcade.Sprite(CHEMIN_FOND_NIVEAU1)
-        fond.center_x = self.window_width / 2
-        fond.center_y = self.window_height / 2
-        fond.width = self.window_width
-        fond.height = self.window_height
-        self.background.append(fond)
-
-        image_murs = Image.open(CHEMIN_MURS_NIVEAU1).convert("RGBA")
-        largeur_image, hauteur_image = image_murs.size
-        echelle_x = self.window_width / largeur_image
-        echelle_y = self.window_height / hauteur_image
-        bandes_actives = {}
-
-        for y in range(hauteur_image):
-            x = 0
-            while x < largeur_image:
-                while x < largeur_image and image_murs.getpixel((x, y))[3] == 0:
-                    x += 1
-                debut = x
-                while x < largeur_image and image_murs.getpixel((x, y))[3] != 0:
-                    x += 1
-                if debut == x:
-                    continue
-
-                fin = x
-                cle = (debut, fin)
-                bande = bandes_actives.get(cle)
-                if bande is not None and bande[3] == y:
-                    bande[3] = y + 1
-                else:
-                    if bande is not None:
-                        self._ajouter_mur_rectangle(bande, echelle_x, echelle_y, hauteur_image)
-                    bandes_actives[cle] = [debut, fin, y, y + 1]
-
-        for bande in bandes_actives.values():
-            self._ajouter_mur_rectangle(bande, echelle_x, echelle_y, hauteur_image)
-
-    def _ajouter_mur_rectangle(self, bande, echelle_x, echelle_y, hauteur_image):
-        """Ajoute un rectangle invisible correspondant à une bande opaque."""
-        debut_x, fin_x, debut_y, fin_y = bande
-        if fin_y <= debut_y:
-            return
-
-        mur = arcade.SpriteSolidColor(
-            max(1, round((fin_x - debut_x) * echelle_x)),
-            max(1, round((fin_y - debut_y) * echelle_y)),
-            arcade.color.WHITE,
-        )
-        mur.center_x = ((debut_x + fin_x) / 2) * echelle_x
-        mur.center_y = self.window_height - ((debut_y + fin_y) / 2) * echelle_y
-        mur.alpha = 0
-        self.walls.append(mur)
 
     def setup(self):
-        """
-        Construit le contenu du niveau : murs, ennemis, objets, position
-        de départ du joueur, etc.
-
-        Comportement par défaut : niveau vide avec le joueur au centre.
-        Surcharge cette méthode dans une sous-classe pour un vrai niveau,
-        par exemple :
-
-            class Level1(Level):
-                def setup(self):
-                    self.player = Player(center_x=100, center_y=100)
-                    self.entities.append(self.player)
-                    # ajouter des murs, ennemis, etc.
-        """
-        self._charger_decor_niveau1()
-        self.player = Player(center_x=self.window_width // 2, center_y=self.window_height // 2)
+        """Empty room with the player at its centre; override in subclasses."""
+        self.player = Player(center_x=self.window_width // 2,
+                             center_y=self.window_height // 2)
+        self.scale_to_window(self.player)
         self.entities.append(self.player)
 
     def update(self, delta_time: float):
-        # On itère sur une copie de la liste : certaines entités (ex: Turret)
-        # peuvent en ajouter de nouvelles (ex: Bullet) pendant leur update(),
-        # ce qui casserait une itération directe sur self.entities.
+        self._refresh_obstacles()
+
+        # Copy of the list: a Turret may append a Bullet during its update,
+        # which would break iterating directly.
         for entity in list(self.entities):
             entity.update(delta_time)
 
-        self._ajouter_corps_termines()
-        self._gerer_collisions_balles()
-        self._resoudre_collisions_solides()
-        self._gerer_colision_trou()
+        self._handle_bullet_collisions()
+        self._handle_player_attack()
+        self._handle_bone_pickup()
+        self._resolve_solid_collisions()
+        self._handle_hole_collisions()
 
-        marge = 60  # tolérance en pixels avant de considérer une entité "hors écran"
+        margin = 60
         for entity in list(self.entities):
             if entity.clamp_to_bounds:
-                # Bloque l'entité dans l'écran (comportement du joueur)
                 if entity.left < 0:
                     entity.left = 0
                 if entity.right > self.window_width:
@@ -163,136 +252,301 @@ class Level:
                 if entity.top > self.window_height:
                     entity.top = self.window_height
             else:
-                # Détruit l'entité dès qu'elle est entièrement sortie de
-                # l'écran (comportement d'une balle)
-                hors_ecran = (
-                    entity.right < -marge
-                    or entity.left > self.window_width + marge
-                    or entity.top < -marge
-                    or entity.bottom > self.window_height + marge
+                off_screen = (
+                    entity.right < -margin
+                    or entity.left > self.window_width + margin
+                    or entity.top < -margin
+                    or entity.bottom > self.window_height + margin
                 )
-                if hors_ecran:
+                if off_screen:
                     entity.remove_from_sprite_lists()
 
-    def _gerer_collisions_balles(self):
-        """Détruit les balles qui touchent un mur ou le joueur."""
-        balles = [e for e in self.entities if isinstance(e, Bullet)]
-        for balle in balles:
-            if arcade.check_for_collision_with_list(balle, self.walls):
-                balle.remove_from_sprite_lists()
+    def _refresh_obstacles(self):
+        walls = list(self.walls)
+        self._solid_obstacles_cache = walls + [c for c in self.corpses if c.blocks_movement()]
+        self._shot_obstacles_cache = walls + [c for c in self.corpses if c.blocks_projectile()]
+
+    def solid_obstacles(self):
+        return self._solid_obstacles_cache
+
+    def shot_obstacles(self):
+        """Read by the turrets every frame for their line of sight."""
+        return self._shot_obstacles_cache
+
+    def add_enemy(self, enemy):
+        """entities updates and draws it, enemies makes it collide."""
+        self.scale_to_window(enemy)
+        self.entities.append(enemy)
+        self.enemies.append(enemy)
+        return enemy
+
+    def _handle_bullet_collisions(self):
+        obstacles = self.shot_obstacles()
+        bullets = [e for e in self.entities if isinstance(e, Bullet)]
+
+        for bullet in bullets:
+            if any(arcade.check_for_collision(bullet, o) for o in obstacles):
+                bullet.remove_from_sprite_lists()
                 continue
 
-            if self.player is None or self.player.etat != "normal":
+            if self.player is None or not self.player.is_vulnerable:
                 continue
 
-            if arcade.check_for_collision(balle, self.player):
-                self._toucher_joueur()
-                balle.remove_from_sprite_lists()
-                break  # une seule balle suffit à déclencher le coup
+            if arcade.check_for_collision(bullet, self.player):
+                self.player.take_hit(bullet)
+                bullet.remove_from_sprite_lists()
+                break   # one bullet is enough to land the hit
 
-    def _toucher_joueur(self):
-        """Mémorise le corps, qui apparaîtra à la fin de l'animation de mort."""
-        self._corpses_en_attente.append((self.player.center_x, self.player.center_y))
-        self.player.take_hit()
+    def _handle_player_attack(self):
+        if self.player is None or not self.player.attack_active:
+            return
 
-        # Signale la mort au reste du jeu (compteur + RoundManager).
-        self.morts += 1
+        hit_x, hit_y = self.player.attack_point()
+        radius = self.player.height
+        for enemy in list(self.enemies):
+            if math.hypot(enemy.center_x - hit_x, enemy.center_y - hit_y) <= radius:
+                enemy.take_damage(self.player)
+
+    def _handle_bone_pickup(self):
+        if self.player is None or not self.player.is_controllable:
+            return
+
+        for corpse in list(self.corpses):
+            if corpse.is_pickable() and arcade.check_for_collision(self.player, corpse):
+                corpse.on_player_contact(self.player)
+
+    def _handle_hole_collisions(self):
+        if self.player is None or not self.player.is_controllable:
+            return
+
+        half = self.world_length(HOLE_HALF)
+        px, py = self.player.center_x, self.player.center_y
+        for index, (x, y) in enumerate(self.holes):
+            if abs(px - x) <= half and abs(py - y) <= half:
+                self.teleport_out_of_hole(index)
+                return
+
+    def hole_exit(self, index):
+        """Just below a hole, clear of its trigger box."""
+        x, y = self.holes[index]
+        half = self.world_length(HOLE_HALF)
+        gap = self.world_length(HOLE_EXIT_GAP)
+        return x, y - (half + self.player.height / 2 + gap)
+
+    def teleport_out_of_hole(self, entered_index):
+        """Drops the player below another hole, never the one just entered."""
+        if len(self.holes) < 2:
+            return
+
+        target = entered_index
+        while target == entered_index:
+            target = random.randrange(len(self.holes))
+
+        self.player.center_x, self.player.center_y = self.hole_exit(target)
+
+    def _on_player_death(self, player):
+        """The cause of death decides the corpse type."""
+        corpse = Corpse.from_death_cause(player.death_cause,
+                                         player.center_x, player.center_y)
+        self.scale_to_window(corpse)
+        self.corpses.append(corpse)
+        self._refresh_obstacles()
+
         if self.on_death is not None:
             self.on_death()
 
-    def _ajouter_corps_termines(self):
-        """Ajoute les corps dont l'animation de mort est terminée."""
-        if self.player is None or not self.player.death_animation_finished:
-            return
+        # Dying right on an altar slot lays the body there.
+        if self.altar is not None:
+            self.altar.try_register(corpse)
 
-        for center_x, center_y in self._corpses_en_attente:
-            self.walls.append(Corpse(center_x=center_x, center_y=center_y))
-        self._corpses_en_attente.clear()
+    def _resolve_solid_collisions(self):
+        """A zombie bumps into a wall corpse, exactly like the player does."""
+        obstacles = self.solid_obstacles()
 
-    
-    def teleport_player_hole_alea(self):
-        trou = self.player.center_x % 4
-        coord = self.holes[trou] 
-        self.player.center_x, self.player.center_y = coord
+        # Frozen while dying and respawning: skipping collisions avoids a
+        # kick when the corpse appears at the player's own position.
+        if self.player is not None and self.player.is_controllable:
+            self._push_out(self.player, obstacles)
 
-    def _gerer_colision_trou(self):
-        px, py = self.player.center_x, self.player.center_y
-        dx = 18
-        for index_trou, (x, y) in enumerate(self.holes):
-            if (x - dx <= px <= x + dx) and (y - dx <= py <= y + dx):
-                self.teleport_player_hole_alea(index_trou)
-                return
+        for enemy in list(self.enemies):
+            self._push_out(enemy, obstacles)
 
-    def teleport_player_hole_alea(self, trou):
-        index_trou = random.randrange(len(self.holes))
+    def _push_out(self, sprite, obstacles) -> bool:
+        """Pushes the sprite out along the axis of smallest overlap."""
+        touched = False
 
-        while index_trou == trou:
-            index_trou = random.randrange(len(self.holes))
+        for obstacle in obstacles:
+            if obstacle is sprite or not arcade.check_for_collision(sprite, obstacle):
+                continue
+            touched = True
 
-        x, y = self.holes[index_trou]
+            overlap_x = min(sprite.right, obstacle.right) - max(sprite.left, obstacle.left)
+            overlap_y = min(sprite.top, obstacle.top) - max(sprite.bottom, obstacle.bottom)
 
-        self.player.center_x = x - 55
-        self.player.center_y = y
-
-    def _resoudre_collisions_solides(self):
-        """
-        Empêche le joueur de traverser les murs/obstacles (dont les Corpse).
-        Résolution simple par axe : on repousse le joueur hors de l'obstacle
-        le long de l'axe où le chevauchement est le plus faible.
-        """
-        if self.player is None or self.player.etat != "normal":
-            # Pendant le respawn, le joueur est figé/invulnérable : on ignore
-            # les collisions (évite un "coup de pied" au moment où le corps
-            # apparaît pile à sa position).
-            return
-
-        obstacles_touches = arcade.check_for_collision_with_list(self.player, self.walls)
-        for obstacle in obstacles_touches:
-            chevauchement_x = min(self.player.right, obstacle.right) - max(self.player.left, obstacle.left)
-            chevauchement_y = min(self.player.top, obstacle.top) - max(self.player.bottom, obstacle.bottom)
-
-            if chevauchement_x < chevauchement_y:
-                if self.player.center_x < obstacle.center_x:
-                    self.player.center_x -= chevauchement_x
+            if overlap_x < overlap_y:
+                if sprite.center_x < obstacle.center_x:
+                    sprite.center_x -= overlap_x
                 else:
-                    self.player.center_x += chevauchement_x
-                self.player.change_x = 0
+                    sprite.center_x += overlap_x
+                sprite.change_x = 0
             else:
-                if self.player.center_y < obstacle.center_y:
-                    self.player.center_y -= chevauchement_y
+                if sprite.center_y < obstacle.center_y:
+                    sprite.center_y -= overlap_y
                 else:
-                    self.player.center_y += chevauchement_y
-                self.player.change_y = 0
+                    sprite.center_y += overlap_y
+                sprite.change_y = 0
+
+        return touched
 
     def draw(self):
         self.background.draw(pixelated=True)
+        if self.altar is not None:
+            self.altar.draw()
         self.walls.draw(pixelated=True)
+        self.corpses.draw(pixelated=True)
         self.entities.draw(pixelated=True)
 
 
-class EmptyLevel(Level):
-    """Premier niveau : totalement vide, pour tester les déplacements du joueur."""
-    pass
-
-
-class TurretDemoLevel(Level):
+class Door(Entity):
     """
-    Niveau de démonstration : le joueur en bas, une tourelle en haut qui
-    vise et tire dessus. Sert d'exemple pour câbler une Turret dans un
-    niveau (référence au niveau + au joueur).
+    Round exit, solid until the altar is filled. The wall itself is painted
+    into the floor artwork, so the panel is drawn on top for the opening to
+    be visible.
+    """
+
+    def __init__(self, center_x, center_y, width, height):
+        super().__init__(width=int(width), height=int(height),
+                         center_x=center_x, center_y=center_y)
+        self.acceleration = 0.0
+        self.friction = 0.0
+        self.max_speed = 0.0
+        self.color = DOOR_PANEL_COLOR
+        self.is_open = False
+
+    def open(self):
+        if self.is_open:
+            return
+        self.is_open = True
+        self.remove_from_sprite_lists()
+
+
+# Image-space placements, checked against the walls, the holes and the
+# water; see tests/test_level1.py.
+LEVEL1_SPAWN = (128, 200)
+LEVEL1_ALTAR = (64, 128)
+LEVEL1_TURRETS = ((64, 68), (198, 68))
+LEVEL1_ZOMBIE = (147, 128)
+LEVEL1_TOUGH_ZOMBIE = (198, 192)
+
+
+class Level1(Level):
+    """
+    First round on map1: two turrets, two zombies, the altar on the left and
+    the top door as the exit. Filling the altar opens it; walking through it
+    ends the round.
     """
 
     def setup(self):
-        self._charger_decor_niveau1()
-        self.player = Player(center_x=self.window_width // 2, center_y=100)
+        self._load_level1_scenery(gap=DOOR_GAP)
+
+        # The floor arrows point at the exit and stay visible.
+        self.background.append(self._layer(LEVEL1_DOOR))
+
+        # Dark doorway painted under the panel, so the hole in the wall shows
+        # once the panel is gone.
+        center_x, center_y, width, height = self.world_rect(DOOR_PANEL)
+        doorway = arcade.SpriteSolidColor(int(width), int(height), color=DOORWAY_COLOR)
+        doorway.center_x, doorway.center_y = center_x, center_y
+        self.background.append(doorway)
+
+        self.door = Door(center_x, center_y, width, height)
+        self.walls.append(self.door)
+
+        self.holes = [self.world_point(x, y) for x, y in LEVEL1_HOLES]
+
+        self.player = Player(*self.world_point(*LEVEL1_SPAWN))
+        self.scale_to_window(self.player)
         self.entities.append(self.player)
 
-        tourelle = Turret(
+        altar_x, altar_y = self.world_point(*LEVEL1_ALTAR)
+        self.altar = SacrificeAltar(
+            center_x=altar_x,
+            center_y=altar_y,
+            required_sacrifices={CorpseType.WALL: 1, CorpseType.BONES: 1},
+            on_unlock=self._open_door,
+            scale=self.sprite_scale,
+        )
+
+        for point in LEVEL1_TURRETS:
+            x, y = self.world_point(*point)
+            self.entities.append(self.scale_to_window(Turret(
+                center_x=x, center_y=y,
+                level=self, player=self.player,
+                fire_interval=1.4, bullet_speed=330,
+            )))
+
+        self.add_enemy(Zombie(*self.world_point(*LEVEL1_ZOMBIE),
+                              player=self.player))
+        self.add_enemy(Zombie(
+            *self.world_point(*LEVEL1_TOUGH_ZOMBIE), player=self.player,
+            hp=2, requires_weapon=True, detection_range=140.0,
+        ))
+
+        self.round_complete = False
+
+        self._objective_text = arcade.Text("", 12, self.window_height - 22,
+                                           arcade.color.WHITE, 12)
+        self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
+
+    def is_complete(self) -> bool:
+        return self.round_complete
+
+    def _open_door(self, altar):
+        self.door.open()
+
+    def update(self, delta_time: float):
+        super().update(delta_time)
+
+        if self.round_complete or not self.door.is_open:
+            return
+
+        if (self.player.center_y >= self.door.bottom
+                and self.door.left <= self.player.center_x <= self.door.right):
+            self.round_complete = True
+
+    def draw(self):
+        super().draw()
+
+        if self.round_complete:
+            self._objective_text.text = "ROUND TERMINE"
+            self._objective_text.color = arcade.color.GOLD
+        elif self.door.is_open:
+            self._objective_text.text = "La porte est ouverte : rejoins le haut de la salle"
+            self._objective_text.color = arcade.color.GOLD
+        else:
+            self._objective_text.text = f"Sacrifices : {self.altar.progress_text()}"
+            self._objective_text.color = arcade.color.WHITE
+        self._objective_text.draw()
+
+        self._player_text.text = (
+            f"Morts : {self.player.death_count}    Os : {self.player.resistance_bonus}"
+        )
+        self._player_text.draw()
+
+
+class TurretDemoLevel(Level):
+    """Minimal example of wiring a turret into a level."""
+
+    def setup(self):
+        self._load_level1_scenery()
+        self.player = Player(center_x=self.window_width // 2, center_y=150)
+        self.entities.append(self.player)
+
+        self.entities.append(Turret(
             center_x=self.window_width // 2,
             center_y=self.window_height - 200,
             level=self,
             player=self.player,
             fire_interval=1.2,
             bullet_speed=350,
-        )
-        self.entities.append(tourelle)
+        ))

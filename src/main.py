@@ -19,7 +19,7 @@ import arcade
 
 import ui
 from round_manager import RoundManager, RoundState, creer_rounds_par_defaut
-from levels.levels import TurretDemoLevel
+from levels.levels import Level1, TurretDemoLevel
 
 LARGEUR_ECRAN = 800
 HAUTEUR_ECRAN = 600
@@ -42,12 +42,12 @@ def creer_niveau(numero, largeur, hauteur):
     """
     Fabrique le Level correspondant à un numéro de round.
 
-    Pour l'instant tous les rounds utilisent TurretDemoLevel (placeholder) :
-    au fur et à mesure que les vrais niveaux seront prêts, il suffira de les
-    brancher ici (ex: {1: Level1, 2: Level2, ...}) sans toucher au reste.
+    Les rounds sans niveau dédié retombent sur TurretDemoLevel : il suffit
+    d'ajouter les suivants ici au fur et à mesure du level-design.
     """
     niveaux = {
-        # 1: Level1, 2: Level2, ...  <- à compléter avec le level-design final
+        1: Level1,
+        # 2: Level2, ...  <- à compléter avec le level-design final
     }
     classe_level = niveaux.get(numero, TurretDemoLevel)
     return classe_level(largeur, hauteur)

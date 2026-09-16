@@ -1,38 +1,115 @@
-import arcade
 import os
+from enum import Enum
+
+from entities.damage import DeathCause
 from entities.entities import Entity
 
-# Dossier contenant les spritesheets du joueur (voir assets/player/)
-DOSSIER_ASSETS = os.path.join(os.path.dirname(__file__), "assets", "corpse")
+ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "entities", "corpse")
 
-TAILLE_FRAME = 16       # chaque frame des spritesheets fait 16x16 px (résolution native)
-TAILLE_AFFICHAGE = 16   # taille voulue à l'écran (px) -> ajuste cette valeur pour agrandir/réduire le perso
+FRAME_SIZE = 16
+DISPLAY_SIZE = 16
+SCALE_FACTOR = 2
+
+
+class CorpseType(Enum):
+    WALL = "wall"
+    BONES = "bones"
+
+
+class CorpseState(Enum):
+    ACTIVE = "active"
+    CONSUMED = "consumed"
+    SACRIFICED = "sacrificed"
+
+
+# Exhaustive on purpose: a new DeathCause must be mapped here explicitly
+# rather than silently falling back to some default corpse.
+CAUSE_TO_TYPE = {
+    DeathCause.TOWER: CorpseType.WALL,
+    DeathCause.ZOMBIE: CorpseType.BONES,
+    DeathCause.NONE: CorpseType.WALL,
+}
+
+SPRITES = {
+    CorpseType.WALL: "corpse_wall.png",
+    CorpseType.BONES: "corpse_bones.png",
+}
+FALLBACK_SPRITE = "corpse.png"
+FALLBACK_TINTS = {
+    CorpseType.WALL: (150, 155, 165),
+    CorpseType.BONES: (255, 240, 200),
+}
 
 
 class Corpse(Entity):
     """
-    Corps laissé au sol à l'endroit où le joueur a été touché.
-    Immobile et solide : une fois ajoutée à Level.walls, elle bloque le
-    passage comme n'importe quel obstacle du décor.
+    Body left where the player died. Its type follows the cause of death:
+    WALL blocks movement and arrows, BONES can be picked up.
     """
 
-    def __init__(self, center_x=0, center_y=0, color=arcade.color.DARK_BROWN):
+    def __init__(self, center_x=0, center_y=0, corpse_type=CorpseType.WALL):
         super().__init__(
-            width=TAILLE_AFFICHAGE,
-            height=TAILLE_AFFICHAGE,
-            color=color,
+            width=DISPLAY_SIZE,
+            height=DISPLAY_SIZE,
             center_x=center_x,
             center_y=center_y,
         )
         self.acceleration = 0.0
         self.friction = 0.0
         self.max_speed = 0.0
-        self.load_animation(
-            "sprite", os.path.join(DOSSIER_ASSETS, "corpse.png"),
-            TAILLE_FRAME, TAILLE_FRAME, 1,
-        )
-        self.set_animation_direction("sprite")
-        self.scale = TAILLE_AFFICHAGE / TAILLE_FRAME * 2
 
-    
-    
+        self.corpse_type = corpse_type
+        self.state = CorpseState.ACTIVE
+        self.slot = None
+
+        self._load_sprite()
+
+    @classmethod
+    def from_death_cause(cls, death_cause, center_x, center_y):
+        return cls(center_x, center_y, CAUSE_TO_TYPE[death_cause])
+
+    def _load_sprite(self):
+        path = os.path.join(ASSETS_DIR, SPRITES[self.corpse_type])
+        tint = None
+        if not os.path.exists(path):
+            path = os.path.join(ASSETS_DIR, FALLBACK_SPRITE)
+            tint = FALLBACK_TINTS[self.corpse_type]
+
+        name = self.corpse_type.value
+        self.load_animation(name, path, FRAME_SIZE, FRAME_SIZE, 1)
+        self.set_animation_direction(name)
+        self.scale = DISPLAY_SIZE / FRAME_SIZE * SCALE_FACTOR
+
+        if tint is not None:
+            self.color = tint   # after load_animation, which replaces the texture
+
+    def blocks_movement(self) -> bool:
+        return self.corpse_type is CorpseType.WALL and self.state is CorpseState.ACTIVE
+
+    def blocks_projectile(self) -> bool:
+        return self.blocks_movement()
+
+    def is_pickable(self) -> bool:
+        return self.corpse_type is CorpseType.BONES and self.state is CorpseState.ACTIVE
+
+    def is_sacrificable(self) -> bool:
+        return self.state is CorpseState.ACTIVE
+
+    def on_player_contact(self, player) -> bool:
+        if not self.is_pickable():
+            return False
+
+        player.pick_up_bones(self)
+        self.state = CorpseState.CONSUMED
+        self.remove_from_sprite_lists()
+        return True
+
+    def move_to_altar(self, altar) -> bool:
+        if not self.is_sacrificable():
+            return False
+
+        self.state = CorpseState.SACRIFICED
+        if not altar.register(self):
+            self.state = CorpseState.ACTIVE
+            return False
+        return True
