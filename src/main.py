@@ -85,13 +85,6 @@ class MonJeu(arcade.Window):
     def setup(self):
         """Initialisation unique (police, plein écran, état de départ)."""
         ui.charger_police()
-        try:
-            self.set_fullscreen(True)
-        except Exception:
-            pass
-        self._aller_menu()
-
-    def _start_music(self, filename: str = "main-theme.mp3", volume: float = 0.35):
         if MACOS:
             # Avant arcade.run(), toggleFullScreen: laisse la fenêtre dans une
             # taille bâtarde : on attend le premier tick.
@@ -100,6 +93,68 @@ class MonJeu(arcade.Window):
             self.set_fullscreen(True)   # arcade gère le viewport HiDPI correctement
         self._aller_menu()
 
+    def _start_music(self, filename: str = "main-theme.mp3", volume: float = 0.35):
+        """Start background music from `assets/sounds/{filename}`.
+
+        Uses pyglet where available for reliable looping; falls back to arcade.
+        """
+        if self._music_playing:
+            # If the requested file is already playing, do nothing.
+            if getattr(self, "_current_music", None) == filename:
+                return
+            # Otherwise stop current music and continue to start the requested one.
+            try:
+                self._stop_music()
+            except Exception:
+                pass
+        try:
+            projet_root = os.path.dirname(os.path.dirname(__file__))
+            chosen = os.path.join(projet_root, "assets", "sounds", filename)
+            if not os.path.exists(chosen):
+                return
+            # remember current music
+            self._current_music = filename
+
+            # Try pyglet player for reliable looping
+            if pyglet is not None:
+                try:
+                    source = pyglet.media.load(chosen)
+                    player = pyglet.media.Player()
+                    player.queue(source)
+                    # Set volume and loop behaviour
+                    try:
+                        player.volume = volume
+                    except Exception:
+                        pass
+                    try:
+                        player.loop = True
+                    except Exception:
+                        try:
+                            player.eos_action = 'loop'
+                        except Exception:
+                            pass
+                    player.play()
+                    self._music_player = player
+                    self._music_playing = True
+                    return
+                except Exception:
+                    self._music_player = None
+
+            # Fallback to arcade sound (may not loop depending on arcade version)
+            try:
+                self._music_sound = arcade.load_sound(chosen)
+                try:
+                    arcade.play_sound(self._music_sound, volume=volume, loop=True)
+                except TypeError:
+                    arcade.play_sound(self._music_sound, volume=volume)
+                self._music_playing = True
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+
+
     def _basculer_fenetre(self):
         """F11 : plein écran <-> fenêtré."""
         if MACOS:
@@ -107,7 +162,7 @@ class MonJeu(arcade.Window):
             self._nswindow.toggleFullScreen_(None)
         else:
             self.set_fullscreen(not self.fullscreen)
-"""
+        """
         Uses pyglet where available for reliable looping; falls back to arcade.
         """
         if self._music_playing:
