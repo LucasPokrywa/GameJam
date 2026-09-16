@@ -602,8 +602,6 @@ class Level1(Level):
 
         self.round_complete = False
 
-        self._objective_text = arcade.Text("", 12, self.window_height - 22,
-                                           arcade.color.WHITE, 12)
         self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
 
     def is_complete(self) -> bool:
@@ -625,17 +623,8 @@ class Level1(Level):
     def draw(self):
         super().draw()
 
-        if self.round_complete:
-            self._objective_text.text = "ROUND TERMINE"
-            self._objective_text.color = arcade.color.GOLD
-        elif self.door.is_open:
-            self._objective_text.text = "La porte est ouverte : rejoins le haut de la salle"
-            self._objective_text.color = arcade.color.GOLD
-        else:
-            self._objective_text.text = f"Sacrifices : {self.altar.progress_text()}"
-            self._objective_text.color = arcade.color.WHITE
-        self._objective_text.draw()
-
+        # L'objectif (sacrifices) est affiché par le HUD (ui.draw_hud) en haut à
+        # droite. Ici on ne garde que le récap joueur en bas à gauche.
         self._player_text.text = (
             f"Morts : {self.player.death_count}    Os : {self.player.resistance_bonus}"
         )

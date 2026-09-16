@@ -313,7 +313,13 @@ class MonJeu(arcade.Window):
 
         elif self.etat == EtatJeu.JEU:
             self.level.draw()
-            ui.draw_hud(self.rm, self.width, self.height)
+            # Condition de victoire (haut-droite) : les sacrifices restants si le
+            # niveau a un autel, sinon la consigne générique du round.
+            objectif = None
+            altar = getattr(self.level, "altar", None)
+            if altar is not None:
+                objectif = "Sacrifices : {}".format(altar.progress_text())
+            ui.draw_hud(self.rm, self.width, self.height, objectif)
 
         elif self.etat == EtatJeu.PAUSE:
             if self.pause_confirm_quit:
