@@ -35,9 +35,9 @@ CAUSE_TO_TYPE = {
 }
 
 SPRITES = {
-    CorpseType.WALL: "corpse_wall.png",
-    CorpseType.BONES: "corpse_bones.png",
-    CorpseType.RAFT: "corpse_raft.png",
+    CorpseType.WALL: "corpse.png",
+    CorpseType.BONES: "bones.png",
+    CorpseType.RAFT: "water.png",
 }
 FALLBACK_SPRITE = "corpse.png"
 FALLBACK_TINTS = {
