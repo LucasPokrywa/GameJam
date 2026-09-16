@@ -235,12 +235,14 @@ class Level:
         so repainting them is enough to move a hazard.
         """
         self.background.append(self._layer(Listbackground[0]))
+        # Props before the hazards: a rock drawn over the pit made a lethal
+        # tile look like solid ground.
+        if Listbackground[3]:
+            self.background.append(self._layer(Listbackground[3]))
         if Listbackground[1]:
             self.background.append(self._layer(Listbackground[1]))
         if Listbackground[2]:
             self.background.append(self._layer(Listbackground[2]))
-        if Listbackground[3]:
-            self.background.append(self._layer(Listbackground[3]))
 
         self._mask_to_sprites(ListMasks[0], self.walls, skip=gap)
         if ListMasks[1]:
@@ -295,9 +297,12 @@ class Level:
             if end_y <= start_y:
                 continue
 
+            # Rounded up: rounding down leaves a sub-pixel seam between two
+            # stacked runs, and _standing_on() tests a single point, so the
+            # player could stand in the seam and survive the pit.
             rect = arcade.SpriteSolidColor(
-                max(1, round(self.world_length(end_x - start_x))),
-                max(1, round(self.world_length(end_y - start_y))),
+                max(1, math.ceil(self.world_length(end_x - start_x))),
+                max(1, math.ceil(self.world_length(end_y - start_y))),
                 color=arcade.color.WHITE,
             )
             rect.center_x, rect.center_y = self.world_point(
