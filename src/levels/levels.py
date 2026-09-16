@@ -33,6 +33,14 @@ LEVEL1_DOOR = os.path.join(LEVEL1_MAP_DIR, "porte_map_niveau1.png")
 ListbackgroundLevel1 = [LEVEL1_FLOOR, LEVEL1_WATER, LEVEL1_VOID, LEVEL1_PROPS]
 ListMasksLevel1 = [LEVEL1_WALL_MASK, LEVEL1_WATER, LEVEL1_VOID]
 
+DECOR_DIR = os.path.join(os.path.dirname(__file__), "..", "..",
+                         "assets", "entities", "decor")
+TORCH_SHEET = os.path.join(DECOR_DIR, "torche.png")
+TORCH_FRAMES = 8
+VASE_SHEET = os.path.join(DECOR_DIR, "vase.png")
+VASE_FRAMES = 16
+
+
 TUTO_MAP_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "assets", "images", "tuto"
 )
@@ -144,6 +152,10 @@ class Level:
         # and leaves a floating body, the void swallows the body with it.
         self.water = arcade.SpriteList()
         self.void = arcade.SpriteList()
+
+        # Decor anime, dessine avant tout ce qui bouge : sinon un pot pose au
+        # sol passe devant le joueur qui marche a cote.
+        self.decorations = arcade.SpriteList()
 
         # Kept apart from walls: depending on their type corpses either block
         # the way or get picked up.
@@ -360,6 +372,9 @@ class Level:
     def update(self, delta_time: float):
         self._refresh_obstacles()
 
+        for deco in self.decorations:
+            deco.update(delta_time)
+
         # Copy of the list: a Turret may append a Bullet during its update,
         # which would break iterating directly.
         for entity in list(self.entities):
@@ -412,6 +427,15 @@ class Level:
     def shot_obstacles(self):
         """Read by the turrets every frame for their line of sight."""
         return self._shot_obstacles_cache
+
+    def add_decoration(self, image_x, image_y, sheet=TORCH_SHEET,
+                       frames=TORCH_FRAMES):
+        """Pose un decor anime sur une case, a l'echelle exacte d'une tuile."""
+        deco = Decoration(*self.world_point(image_x, image_y), sheet, frames)
+        deco.scale = self.map_scale   # la planche est en 16 px, comme une tuile
+        deco.sync_hit_box_to_texture()
+        self.decorations.append(deco)
+        return deco
 
     def add_enemy(self, enemy):
         """entities updates and draws it, enemies makes it collide."""
@@ -639,6 +663,7 @@ class Level:
         if self.altar is not None:
             self.altar.draw()
         self.walls.draw(pixelated=True)
+        self.decorations.draw(pixelated=True)
         self.corpses.draw(pixelated=True)
         self.entities.draw(pixelated=True)
 
@@ -845,6 +870,14 @@ PUZZLE1_SPAWN = (128, 200)
 PUZZLE1_DOOR = (240, 136, 16, 16)
 PUZZLE1_BURNABLE = (128, 48, 16, 96)
 PUZZLE1_TURRETS = ((92, 86),)
+# Torches sur les murets du milieu et sur le mur du haut. Rien d'autre n'est
+# pose la-haut : une niche sombre s'y lit comme une porte et le joueur croit
+# pouvoir entrer.
+PUZZLE1_TORCHES = ((56, 104), (104, 104), (184, 104), (232, 104),
+                   (40, 8), (216, 8))
+# Vases dans les angles. Les coffres et cuves du tileset embarquent un rebord
+# de mur — poses sur du sol ils laissent un morceau de mur orphelin.
+PUZZLE1_VASES = ((24, 24), (24, 232), (232, 232))
 
 class Puzzle1(Level):
     """
@@ -892,6 +925,13 @@ class Puzzle1(Level):
         level=self, player=self.player,
         fire_interval=1.4, bullet_speed=330, orientation="west"
         )))
+
+        # Torches murales : sur les murets du milieu, et de part et d'autre
+        # de la salle haute.
+        for point in PUZZLE1_TORCHES:
+            self.add_decoration(*point)
+        for point in PUZZLE1_VASES:
+            self.add_decoration(*point, sheet=VASE_SHEET, frames=VASE_FRAMES)
 
         for point in PUZZLE1_TURRETS:
             x, y = self.world_point(*point)
@@ -974,6 +1014,14 @@ LEVEL3_ZOMBIE = (208, 64)     # tuiles (12-13, 3-4), dans la cage
 # fait 64 de large, et il resterait prisonnier.
 LEVEL3_HEDGE_WEST = (184, 64, 16, 32)
 LEVEL3_HEDGE_SOUTH = (200, 88, 48, 16)
+# Torches uniquement sur le mur du haut : c'est la seule face de mur que la
+# salle presente de face. Les masses interieures sont des blocs vus de dessus
+# et les murs lateraux sont vus de profil — une torche y flotte. Le round reste
+# le plus habille des trois grace aux vases.
+LEVEL3_TORCHES = ((104, 40), (184, 40))
+# Adosses a un mur ou a une masse : une poterie au milieu d'une salle se lit
+# comme tombee la.
+LEVEL3_VASES = ((88, 72), (88, 152), (216, 120), (184, 216))
 
 
 class Level3(Level):
@@ -1018,6 +1066,11 @@ class Level3(Level):
             self.burnable_obstacles.append(hedge)
             self.entities.append(hedge)
 
+        for point in LEVEL3_TORCHES:
+            self.add_decoration(*point)
+        for point in LEVEL3_VASES:
+            self.add_decoration(*point, sheet=VASE_SHEET, frames=VASE_FRAMES)
+
         x, y = self.world_point(*LEVEL3_TURRET)
         self.entities.append(self.scale_to_window(Turret(
             center_x=x, center_y=y, level=self, player=self.player,
@@ -1056,9 +1109,30 @@ class Level3(Level):
         self._player_text.draw()
 
 
+class Decoration(Entity):
+    """
+    Sprite anime purement decoratif. Il n'est dans aucun masque et n'est lu par
+    aucune passe de collision : on peut en semer sans toucher au gameplay.
+    """
+
+    def __init__(self, center_x, center_y, sheet, frames, frame_duration=0.12):
+        super().__init__(width=TILE_SIZE, height=TILE_SIZE,
+                         center_x=center_x, center_y=center_y)
+        self.acceleration = 0.0
+        self.friction = 0.0
+        self.max_speed = 0.0
+        self.load_animation("idle", sheet, TILE_SIZE, TILE_SIZE, frames)
+        self.set_animation_direction("idle")
+        self.frame_duration = frame_duration
+
+
 # Coordonnees image (256x256, grille de 16 px) ; cf. le plan dans tuto/sol.png.
 TUTO_SPAWN = (120, 200)      # tuile (7, 12), dans le hall bas
 TUTO_XBOW = (200, 112)       # milieu du couloir, tire vers l'ouest
+# Decor volontairement rare : la salle d'ouverture doit rester lisible, et la
+# densite monte d'un round a l'autre.
+TUTO_TORCHES = ((56, 88), (184, 88))
+TUTO_VASES = ((40, 216),)
 
 
 class Tutorial(Level):
@@ -1092,6 +1166,11 @@ class Tutorial(Level):
         self.entities.append(self.player)
 
         self.door = Door(*self.world_rect(DOOR_PANEL))
+
+        for point in TUTO_TORCHES:
+            self.add_decoration(*point)
+        for point in TUTO_VASES:
+            self.add_decoration(*point, sheet=VASE_SHEET, frames=VASE_FRAMES)
 
         x, y = self.world_point(*TUTO_XBOW)
         self.entities.append(self.scale_to_window(Xbow(
