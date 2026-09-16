@@ -26,6 +26,8 @@ PLAYER_HEIGHT = 32
 DYING_DURATION = 0.45
 RESPAWN_DURATION = 0.9
 BLINK_INTERVAL = 0.1
+BURN_DURATION = 3.0
+BURN_BLINK_INTERVAL = 0.1
 INVULNERABILITY_DURATION = 0.6
 
 ATTACK_COOLDOWN = 0.4
@@ -33,6 +35,7 @@ ATTACK_RANGE_RATIO = 1.1   # of the player's own height, so it scales with it
 
 # Open question from the spec, to settle after a playtest.
 KEEP_RESISTANCE_ON_DEATH = True
+BURNING_COLOR = (255, 120, 30)
 
 
 class PlayerState(Enum):
@@ -83,6 +86,9 @@ class Player(Entity):
         self._state_timer = 0.0
         self._blink_timer = 0.0
         self._invulnerability_timer = 0.0
+        self._burn_timer = 0.0
+        self._burn_blink_timer = 0.0
+        self.is_burning = False
         self.attached_stake = None
 
         self.is_armed = False
@@ -130,6 +136,18 @@ class Player(Entity):
     @property
     def is_vulnerable(self) -> bool:
         return self.state is PlayerState.ALIVE and self._invulnerability_timer <= 0.0
+
+    def ignite(self):
+        """Set the player on fire; the fire kills after a short delay."""
+        if not self.is_vulnerable or self.is_burning:
+            return False
+
+        self.is_burning = True
+        self._burn_timer = BURN_DURATION
+        self._burn_blink_timer = 0.0
+        self.color = BURNING_COLOR
+        self.alpha = 255
+        return True
 
     def take_hit(self, source=None, fatal=False):
         """
@@ -206,6 +224,8 @@ class Player(Entity):
         self.change_x = 0
         self.change_y = 0
         self.alpha = 255
+        self.is_burning = False
+        self.color = arcade.color.WHITE
         self.death_cause = DeathCause.NONE
         self.state = PlayerState.ALIVE
         self._invulnerability_timer = INVULNERABILITY_DURATION
@@ -331,8 +351,23 @@ class Player(Entity):
         else:
             self._update_alive(delta_time)
 
+        if self.is_burning and self.state is PlayerState.ALIVE:
+            self._update_burning(delta_time)
+
     def _update_staked(self, delta_time: float):
         super().update(delta_time)
+
+    def _update_burning(self, delta_time: float):
+        self._burn_timer -= delta_time
+        self._burn_blink_timer += delta_time
+        if self._burn_blink_timer >= BURN_BLINK_INTERVAL:
+            self._burn_blink_timer = 0.0
+            self.alpha = 255 if self.alpha != 255 else 70
+
+        if self._burn_timer <= 0.0:
+            self.is_burning = False
+            self.alpha = 255
+            self.take_hit(DeathCause.TOWER, fatal=True)
 
     def _update_alive(self, delta_time: float):
         dx, dy = 0, 0
