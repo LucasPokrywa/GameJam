@@ -25,7 +25,7 @@ except Exception:
 
 import ui
 from round_manager import RoundManager, RoundState, creer_rounds_par_defaut
-from levels.levels import Level1, TurretDemoLevel
+from levels.levels import Level1, Puzzle1, TurretDemoLevel, Puzzle0
 
 LARGEUR_ECRAN = 800
 HAUTEUR_ECRAN = 600
@@ -57,8 +57,9 @@ def creer_niveau(numero, largeur, hauteur):
     d'ajouter les suivants ici au fur et à mesure du level-design.
     """
     niveaux = {
-        1: Level1,
-        # 2: Level2, ...  <- à compléter avec le level-design final
+        1:Puzzle0,
+        2:Puzzle1,
+        3:Level1
     }
     classe_level = niveaux.get(numero, TurretDemoLevel)
     return classe_level(largeur, hauteur)

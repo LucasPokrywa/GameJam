@@ -4,15 +4,7 @@ import os
 import arcade
 from PIL import Image
 
-try:
-    _SOUNDS_DIR = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-        "assets", "sounds",
-    )
-    BULLET_HIT_SOUND = arcade.load_sound(os.path.join(_SOUNDS_DIR, "bullet-hit.ogg"))
-except Exception:
-    BULLET_HIT_SOUND = None
-
+from entities.xbow import Xbow
 from entities.altar import SacrificeAltar
 from entities.corpse import Corpse, CorpseType
 from entities.bullet import Bullet
@@ -20,7 +12,12 @@ from entities.damage import DeathCause
 from entities.enemy import Zombie
 from entities.entities import Entity
 from entities.player import Player
+from entities.stake import Stake
 from entities.turret import Turret
+
+PUZZLE1_MAP_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "assets", "images", "puzzle1"
+)
 
 LEVEL1_MAP_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "assets", "images", "map1"
@@ -31,6 +28,29 @@ LEVEL1_WATER = os.path.join(LEVEL1_MAP_DIR, "eau_map_niveau1.png")
 LEVEL1_VOID = os.path.join(LEVEL1_MAP_DIR, "vide_map_niveau1.png")
 LEVEL1_PROPS = os.path.join(LEVEL1_MAP_DIR, "decors_map_niveau1.png")
 LEVEL1_DOOR = os.path.join(LEVEL1_MAP_DIR, "porte_map_niveau1.png")
+
+ListbackgroundLevel1 = [LEVEL1_FLOOR, LEVEL1_WATER, LEVEL1_VOID, LEVEL1_PROPS]
+ListMasksLevel1 = [LEVEL1_WALL_MASK, LEVEL1_WATER, LEVEL1_VOID]
+
+PUZZLE0_MAP_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "assets", "images", "puzzle0"
+)
+
+PUZZLE0_FLOOR = os.path.join(PUZZLE0_MAP_DIR, "Puzzle0.png")
+PUZZLE0_WALL_MASK = os.path.join(PUZZLE0_MAP_DIR, "Walls.png")
+PUZZLE0_WATER = os.path.join(PUZZLE0_MAP_DIR, "Water.png")
+PUZZLE0_VOID = os.path.join(PUZZLE0_MAP_DIR, "Void.png")
+
+ListbackgroundPuzzle0 = [PUZZLE0_FLOOR, PUZZLE0_WATER, None, None]
+ListMasksPuzzle0 = [PUZZLE0_WALL_MASK, PUZZLE0_WATER, None]
+
+PUZZLE1_FLOOR = os.path.join(PUZZLE1_MAP_DIR, "Puzzle1.png")
+PUZZLE1_WALL_MASK = os.path.join(PUZZLE1_MAP_DIR, "Walls.png")
+PUZZLE1_WATER = os.path.join(PUZZLE1_MAP_DIR, "Water.png")
+PUZZLE1_VOID = os.path.join(PUZZLE1_MAP_DIR, "Void.png")
+
+ListbackgroundPuzzle1 = [PUZZLE1_FLOOR, PUZZLE1_WATER, PUZZLE1_VOID, None]
+ListMasksPuzzle1 = [PUZZLE1_WALL_MASK, PUZZLE1_WATER, PUZZLE1_VOID]
 
 MAP_SIZE = 256   # the map1 PNGs are 256x256
 TILE_SIZE = 16   # the artwork is drawn on a 16 px grid, 16x16 tiles
@@ -192,7 +212,7 @@ class Level:
         center_x, center_y = self.world_point((x0 + x1) / 2, (y0 + y1) / 2)
         return center_x, center_y, self.world_length(x1 - x0), self.world_length(y1 - y0)
 
-    def _load_level1_scenery(self, gap=None):
+    def _load_level_scenery(self, Listbackground, ListMasks, gap=None):
         """
         Map1 layers, then the opaque pixels of its masks turned into walls and
         into lethal ground. `gap` (image coordinates) is ignored from the wall
@@ -201,14 +221,19 @@ class Level:
         The water and void PNGs are both the artwork and the collision mask,
         so repainting them is enough to move a hazard.
         """
-        self.background.append(self._layer(LEVEL1_FLOOR))
-        self.background.append(self._layer(LEVEL1_WATER))
-        self.background.append(self._layer(LEVEL1_VOID))
-        self.background.append(self._layer(LEVEL1_PROPS))
+        self.background.append(self._layer(Listbackground[0]))
+        if Listbackground[1]:
+            self.background.append(self._layer(Listbackground[1]))
+        if Listbackground[2]:
+            self.background.append(self._layer(Listbackground[2]))
+        if Listbackground[3]:
+            self.background.append(self._layer(Listbackground[3]))
 
-        self._mask_to_sprites(LEVEL1_WALL_MASK, self.walls, skip=gap)
-        self._mask_to_sprites(LEVEL1_WATER, self.water)
-        self._mask_to_sprites(LEVEL1_VOID, self.void)
+        self._mask_to_sprites(ListMasks[0], self.walls, skip=gap)
+        if ListMasks[1]:
+            self._mask_to_sprites(ListMasks[1], self.water)
+        if ListMasks[2]:
+            self._mask_to_sprites(ListMasks[2], self.void)
 
     def _mask_runs(self, path, skip=None):
         """
@@ -373,6 +398,19 @@ class Level:
                 bullet.remove_from_sprite_lists()
                 break   # one bullet is enough to land the hit
 
+        stakes = [e for e in self.entities if isinstance(e, Stake)]
+        for stake in stakes:
+            if stake.attached_player is not None:
+                continue
+
+            if any(arcade.check_for_collision(stake, o) for o in obstacles):
+                stake.remove_from_sprite_lists()
+                continue
+
+            if self.player is not None and self.player.is_vulnerable \
+                    and arcade.check_for_collision(stake, self.player):
+                self.player.impale_with_stake(stake)
+
     def _handle_player_attack(self):
         if self.player is None or not self.player.attack_active:
             return
@@ -422,7 +460,9 @@ class Level:
             return
 
         if self._standing_on(self.player, self.void) is not None:
-            self.player.take_hit(DeathCause.VOID, fatal=True)
+            if self._standing_on(self.player, self.rafts()) is None:
+                self.player.take_hit(DeathCause.VOID, fatal=True)
+            return
 
     def _keep_enemies_off_hazards(self):
         """
@@ -499,10 +539,16 @@ class Level:
         """A zombie bumps into a wall corpse, exactly like the player does."""
         obstacles = self.solid_obstacles()
 
-        # Frozen while dying and respawning: skipping collisions avoids a
-        # kick when the corpse appears at the player's own position.
-        if self.player is not None and self.player.is_controllable:
-            self._push_out(self.player, obstacles)
+        if self.player is not None:
+            if self.player.attached_stake is not None:
+                if any(arcade.check_for_collision(self.player, wall)
+                       for wall in self.walls):
+                    stake = self.player.attached_stake
+                    self.player.crash_into_wall()
+                    if stake is not None:
+                        stake.remove_from_sprite_lists()
+            elif self.player.is_controllable:
+                self._push_out(self.player, obstacles)
 
         for enemy in list(self.enemies):
             self._push_out(enemy, obstacles)
@@ -584,7 +630,7 @@ class Level1(Level):
     """
 
     def setup(self):
-        self._load_level1_scenery(gap=DOOR_GAP)
+        self._load_level_scenery(ListbackgroundLevel1, ListMasksLevel1, gap=DOOR_GAP)
 
         # Closed state: the door layer covers the corridor the floor paints.
         closed_layer = self._layer(LEVEL1_DOOR)
@@ -648,6 +694,100 @@ class Level1(Level):
 
         # L'objectif (sacrifices) est affiché par le HUD (ui.draw_hud) en haut à
         # droite. Ici on ne garde que le récap joueur en bas à gauche.
+        self._player_text.text = (
+            f"Morts : {self.player.death_count}    Os : {self.player.resistance_bonus}"
+        )
+        self._player_text.draw()
+
+PUZZLE1_SPAWN = (128, 200)
+
+class Puzzle1(Level):
+    """
+    First round on map1: two turrets, two zombies, the altar on the left and
+    the top door as the exit. Filling the altar opens it; walking through it
+    ends the round.
+    """
+
+    def setup(self):
+        self._load_level_scenery(ListbackgroundPuzzle1, ListMasksPuzzle1, gap=DOOR_GAP)
+
+        self.player = Player(*self.world_point(*PUZZLE1_SPAWN))
+        self.scale_to_window(self.player)
+        self.entities.append(self.player)
+
+        self.round_complete = False
+
+        self._objective_text = arcade.Text("", 12, self.window_height - 22,
+                                           arcade.color.WHITE, 12)
+        self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
+
+        center_x, center_y, width, height = self.world_rect((256-24, (16*7)-8, 16, 16))
+        self.door = Door(center_x, center_y, width, height)
+
+    
+        x, y = self.world_point(14.5*16, 10.5*16)
+        self.entities.append(self.scale_to_window(Xbow(
+        center_x=x, center_y=y,
+        level=self, player=self.player,
+        fire_interval=1.4, bullet_speed=330, orientation="west"
+        )))
+
+    def is_complete(self) -> bool:
+        return self.round_complete
+
+    def update(self, delta_time: float):
+        super().update(delta_time)
+        if (self.player.center_y >= self.door.bottom
+                and self.door.left <= self.player.center_x <= self.door.right):
+            self.round_complete = True
+                
+
+    def draw(self):
+        super().draw()
+
+        self._player_text.text = (
+            f"Morts : {self.player.death_count}    Os : {self.player.resistance_bonus}"
+        )
+        self._player_text.draw()
+
+PUZZLE0_SPAWN = (120, 200)
+
+class Puzzle0(Level):
+    """
+    First round on map1: two turrets, two zombies, the altar on the left and
+    the top door as the exit. Filling the altar opens it; walking through it
+    ends the round.
+    """
+
+    def setup(self):
+        self._load_level_scenery(ListbackgroundPuzzle0, ListMasksPuzzle0, gap=DOOR_GAP)
+
+        self.player = Player(*self.world_point(*PUZZLE0_SPAWN))
+        self.scale_to_window(self.player)
+        self.entities.append(self.player)
+
+        self.round_complete = False
+
+        self._objective_text = arcade.Text("", 12, self.window_height - 22,
+                                           arcade.color.WHITE, 12)
+        self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
+
+        center_x, center_y, width, height = self.world_rect((120, 24, 16, 16))
+        self.door = Door(center_x, center_y, width, height)
+
+    def is_complete(self) -> bool:
+        return self.round_complete
+
+    def update(self, delta_time: float):
+        super().update(delta_time)
+        if (self.player.center_y >= self.door.bottom
+                and self.door.left <= self.player.center_x <= self.door.right):
+            self.round_complete = True
+        
+
+    def draw(self):
+        super().draw()
+
         self._player_text.text = (
             f"Morts : {self.player.death_count}    Os : {self.player.resistance_bonus}"
         )
