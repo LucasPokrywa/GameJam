@@ -37,9 +37,7 @@ REFERENCE_SCALE = 600 / MAP_SIZE
 
 # Both boxes are measured on the artwork above, in image coordinates.
 DOOR_GAP = (112, 0, 144, 48)      # punched out of the wall mask
-DOOR_PANEL = (112, 32, 144, 47)   # visible panel, aligned on the stone band
-DOOR_PANEL_COLOR = (120, 80, 50)
-DOORWAY_COLOR = (26, 22, 38)      # same dark as outside the room
+DOOR_PANEL = (112, 32, 144, 47)   # stone panel of the door layer
 
 BACKGROUND_COLOR = (0x19, 0x14, 0x26)   # same dark as the maps' border
 
@@ -503,18 +501,18 @@ class Level:
 
 class Door(Entity):
     """
-    Round exit, solid until the altar is filled. The wall itself is painted
-    into the floor artwork, so the panel is drawn on top for the opening to
-    be visible.
+    Round exit, solid until the altar is filled. Invisible like the other
+    walls: `closed_layer` is what shows it, and drops with it.
     """
 
-    def __init__(self, center_x, center_y, width, height):
+    def __init__(self, center_x, center_y, width, height, closed_layer):
         super().__init__(width=int(width), height=int(height),
                          center_x=center_x, center_y=center_y)
         self.acceleration = 0.0
         self.friction = 0.0
         self.max_speed = 0.0
-        self.color = DOOR_PANEL_COLOR
+        self.alpha = 0
+        self.closed_layer = closed_layer
         self.is_open = False
 
     def open(self):
@@ -522,6 +520,7 @@ class Door(Entity):
             return
         self.is_open = True
         self.remove_from_sprite_lists()
+        self.closed_layer.remove_from_sprite_lists()
 
 
 # Image-space placements, checked against the walls, the holes and the
@@ -543,17 +542,11 @@ class Level1(Level):
     def setup(self):
         self._load_level1_scenery(gap=DOOR_GAP)
 
-        # The floor arrows point at the exit and stay visible.
-        self.background.append(self._layer(LEVEL1_DOOR))
+        # Closed state: the door layer covers the corridor the floor paints.
+        closed_layer = self._layer(LEVEL1_DOOR)
+        self.background.append(closed_layer)
 
-        # Dark doorway painted under the panel, so the hole in the wall shows
-        # once the panel is gone.
-        center_x, center_y, width, height = self.world_rect(DOOR_PANEL)
-        doorway = arcade.SpriteSolidColor(int(width), int(height), color=DOORWAY_COLOR)
-        doorway.center_x, doorway.center_y = center_x, center_y
-        self.background.append(doorway)
-
-        self.door = Door(center_x, center_y, width, height)
+        self.door = Door(*self.world_rect(DOOR_PANEL), closed_layer)
         self.walls.append(self.door)
 
         self.holes = [self.world_point(x, y) for x, y in LEVEL1_HOLES]
