@@ -15,6 +15,28 @@ DEATH_SHEET = os.path.join(ASSETS_DIR, "Death", "Death.png")
 DEATH_FRAMES = 6
 FOOTSTEP_INTERVAL = 0.18  # seconds between footstep sounds at normal walking speed (faster)
 
+# (animation, spritesheet, mirrored). No dedicated left-facing sheet: the 3/4
+# view is mirrored.
+RUN_SHEETS = (
+    ("run_down", "Run_F.png", False),
+    ("run_up", "Run_Back.png", False),
+    ("run_right", "Run_34F.png", False),
+    ("run_left", "Run_34F.png", True),
+)
+IDLE_SHEETS = (
+    ("idle_down", "Idle_F.png", False),
+    ("idle_up", "Idle_B.png", False),
+    ("idle_right", "Idle_34F.png", False),
+    ("idle_left", "Idle_34F.png", True),
+)
+
+# Same poses, reinforced character: worn while the player carries bones.
+ARMED_SUFFIX = "_armed"
+ANIMATION_SETS = (
+    ("", "Run", "Idle"),
+    (ARMED_SUFFIX, "Run_Renforced", "Idle_Renforced"),
+)
+
 # The skeleton only covers 16x20 px at the centre of each 64x64 frame; without
 # this crop the surrounding emptiness lands in the hit box. Same box for every
 # animation, otherwise the character jitters between them.
@@ -259,42 +281,16 @@ class Player(Entity):
         return self.center_x + dx, self.center_y + dy
 
     def _load_animations(self):
-        self.load_animation(
-            "run_down", os.path.join(ASSETS_DIR, "Run/Run_F.png"),
-            FRAME_SIZE, FRAME_SIZE, RUN_FRAMES, crop_box=CHARACTER_BOX,
-        )
-        self.load_animation(
-            "run_up", os.path.join(ASSETS_DIR, "Run/Run_Back.png"),
-            FRAME_SIZE, FRAME_SIZE, RUN_FRAMES, crop_box=CHARACTER_BOX,
-        )
-        self.load_animation(
-            "run_right", os.path.join(ASSETS_DIR, "Run/Run_34F.png"),
-            FRAME_SIZE, FRAME_SIZE, RUN_FRAMES, crop_box=CHARACTER_BOX,
-        )
-        # No dedicated left-facing sheet: the 3/4 view is mirrored.
-        self.load_animation(
-            "run_left", os.path.join(ASSETS_DIR, "Run/Run_34F.png"),
-            FRAME_SIZE, FRAME_SIZE, RUN_FRAMES,
-            mirror_horizontal=True, crop_box=CHARACTER_BOX,
-        )
-
-        self.load_animation(
-            "idle_down", os.path.join(ASSETS_DIR, "Idle/Idle_F.png"),
-            FRAME_SIZE, FRAME_SIZE, IDLE_FRAMES, crop_box=CHARACTER_BOX,
-        )
-        self.load_animation(
-            "idle_up", os.path.join(ASSETS_DIR, "Idle/Idle_B.png"),
-            FRAME_SIZE, FRAME_SIZE, IDLE_FRAMES, crop_box=CHARACTER_BOX,
-        )
-        self.load_animation(
-            "idle_right", os.path.join(ASSETS_DIR, "Idle/Idle_34F.png"),
-            FRAME_SIZE, FRAME_SIZE, IDLE_FRAMES, crop_box=CHARACTER_BOX,
-        )
-        self.load_animation(
-            "idle_left", os.path.join(ASSETS_DIR, "Idle/Idle_34F.png"),
-            FRAME_SIZE, FRAME_SIZE, IDLE_FRAMES,
-            mirror_horizontal=True, crop_box=CHARACTER_BOX,
-        )
+        for suffix, run_dir, idle_dir in ANIMATION_SETS:
+            for sheets, folder, frames in ((RUN_SHEETS, run_dir, RUN_FRAMES),
+                                           (IDLE_SHEETS, idle_dir, IDLE_FRAMES)):
+                for name, filename, mirrored in sheets:
+                    self.load_animation(
+                        name + suffix,
+                        os.path.join(ASSETS_DIR, folder, filename),
+                        FRAME_SIZE, FRAME_SIZE, frames,
+                        mirror_horizontal=mirrored, crop_box=CHARACTER_BOX,
+                    )
 
         self.has_death_animation = os.path.exists(DEATH_SHEET)
         if self.has_death_animation:
@@ -302,6 +298,11 @@ class Player(Entity):
                 "death", DEATH_SHEET,
                 FRAME_SIZE, FRAME_SIZE, DEATH_FRAMES, crop_box=CHARACTER_BOX,
             )
+
+    def _set_pose(self, name):
+        if self.is_armed and name + ARMED_SUFFIX in self.animations:
+            name += ARMED_SUFFIX
+        self.set_animation_direction(name)
 
     def _play_death_animation(self):
         if self.has_death_animation:
@@ -405,7 +406,7 @@ class Player(Entity):
         # Keeps the run animation from playing while only braking.
         speed = (self.change_x ** 2 + self.change_y ** 2) ** 0.5
         if speed >= 5:
-            self.set_animation_direction(f"run_{self.direction}")
+            self._set_pose(f"run_{self.direction}")
             # Play footstep periodically while moving
             try:
                 self._footstep_timer -= delta_time
@@ -415,7 +416,7 @@ class Player(Entity):
             except Exception:
                 pass
         else:
-            self.set_animation_direction(f"idle_{self.direction}")
+            self._set_pose(f"idle_{self.direction}")
             self._footstep_timer = 0.0
 
         self.alpha = 255 if self._invulnerability_timer <= 0.0 else 140
