@@ -63,6 +63,22 @@ class Player(Entity):
         self.blink_timer = 0.0
         self.death_animation_finished = True
 
+    def fall_water(self):
+        """
+        Appelée quand le joueur est touché par une balle (voir Level).
+        Ignore le coup si le joueur est déjà en train de respawn (invulnérable).
+        """
+        if self.etat != "normal":
+            return
+        self.etat = "respawn"
+        self.respawn_timer = 0.0
+        self.blink_timer = 0.0
+        self.change_x = 0
+        self.change_y = 0
+        self.set_animation_playing(False)
+        self.death_animation_finished = False
+
+
     def take_hit(self):
         """
         Appelée quand le joueur est touché par une balle (voir Level).

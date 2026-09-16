@@ -9,11 +9,12 @@ from entities.corpse import Corpse
 
 
 DOSSIER_MAP_NIVEAU1 = os.path.join(
-    os.path.dirname(__file__), "..", "..", "assets", "images", "map1"
+    os.path.dirname(__file__), "..", "..", "assets", "images", "puzzle1"
 )
-CHEMIN_FOND_NIVEAU1 = os.path.join(DOSSIER_MAP_NIVEAU1, "map_niveau1.png")
-CHEMIN_MURS_NIVEAU1 = os.path.join(DOSSIER_MAP_NIVEAU1, "mur_map_niveau1.png")
-
+CHEMIN_FOND_NIVEAU1 = os.path.join(DOSSIER_MAP_NIVEAU1, "fond.png")
+CHEMIN_MURS_NIVEAU1 = os.path.join(DOSSIER_MAP_NIVEAU1, "map1.png")
+CHEMIN_EAU_NIVEAU1 = os.path.join(DOSSIER_MAP_NIVEAU1, "water1.png")
+CHEMIN_VIDE_NIVEAU1 = os.path.join(DOSSIER_MAP_NIVEAU1, "void1.png")
 
 class Level:
     """
@@ -33,11 +34,18 @@ class Level:
         # Sprites de décor / obstacles (pour les collisions plus tard)
         self.walls = arcade.SpriteList()
 
+        self.water = arcade.SpriteList()
+
+        self.void = arcade.SpriteList()
+
+        self.walkable = arcade.SpriteList()
+
         # Toutes les entités présentes dans le niveau, y compris le joueur
         self.entities = arcade.SpriteList()
 
         self.player = None
         self._corpses_en_attente = []
+        self._water_corpses_en_attente = []
 
         self.setup()
 
@@ -80,6 +88,68 @@ class Level:
         for bande in bandes_actives.values():
             self._ajouter_mur_rectangle(bande, echelle_x, echelle_y, hauteur_image)
 
+        image_eau = Image.open(CHEMIN_EAU_NIVEAU1).convert("RGBA")
+        largeur_image, hauteur_image = image_eau.size
+        echelle_x = self.window_width / largeur_image
+        echelle_y = self.window_height / hauteur_image
+        bandes_actives = {}
+        
+        for y in range(hauteur_image):
+            x = 0
+            while x < largeur_image:
+                while x < largeur_image and image_eau.getpixel((x, y))[3] == 0:
+                    x += 1
+                debut = x
+                while x < largeur_image and image_eau.getpixel((x, y))[3] != 0:
+                    x += 1
+                if debut == x:
+                    continue
+        
+                fin = x
+                cle = (debut, fin)
+                bande = bandes_actives.get(cle)
+                if bande is not None and bande[3] == y:
+                    bande[3] = y + 1
+                else:
+                    if bande is not None:
+                        self._ajouter_eau_rectangle(bande, echelle_x, echelle_y, hauteur_image)
+                    bandes_actives[cle] = [debut, fin, y, y + 1]
+
+        for bande in bandes_actives.values():
+            self._ajouter_eau_rectangle(bande, echelle_x, echelle_y, hauteur_image)
+
+
+        image_vide = Image.open(CHEMIN_VIDE_NIVEAU1).convert("RGBA")
+        largeur_image, hauteur_image = image_vide.size
+        echelle_x = self.window_width / largeur_image
+        echelle_y = self.window_height / hauteur_image
+        bandes_actives = {}
+        
+        for y in range(hauteur_image):
+            x = 0
+            while x < largeur_image:
+                while x < largeur_image and image_vide.getpixel((x, y))[3] == 0:
+                    x += 1
+                debut = x
+                while x < largeur_image and image_vide.getpixel((x, y))[3] != 0:
+                    x += 1
+                if debut == x:
+                    continue
+        
+                fin = x
+                cle = (debut, fin)
+                bande = bandes_actives.get(cle)
+                if bande is not None and bande[3] == y:
+                    bande[3] = y + 1
+                else:
+                    if bande is not None:
+                        self._ajouter_vide_rectangle(bande, echelle_x, echelle_y, hauteur_image)
+                    bandes_actives[cle] = [debut, fin, y, y + 1]
+
+        for bande in bandes_actives.values():
+            self._ajouter_vide_rectangle(bande, echelle_x, echelle_y, hauteur_image)
+        
+
     def _ajouter_mur_rectangle(self, bande, echelle_x, echelle_y, hauteur_image):
         """Ajoute un rectangle invisible correspondant à une bande opaque."""
         debut_x, fin_x, debut_y, fin_y = bande
@@ -95,6 +165,39 @@ class Level:
         mur.center_y = self.window_height - ((debut_y + fin_y) / 2) * echelle_y
         mur.alpha = 0
         self.walls.append(mur)
+
+    def _ajouter_eau_rectangle(self, bande, echelle_x, echelle_y, hauteur_image):
+        """Ajoute un rectangle invisible correspondant à une bande opaque."""
+        debut_x, fin_x, debut_y, fin_y = bande
+        if fin_y <= debut_y:
+            return
+
+        eau = arcade.SpriteSolidColor(
+            max(1, round((fin_x - debut_x) * echelle_x)),
+            max(1, round((fin_y - debut_y) * echelle_y)),
+            arcade.color.BLUE,
+        )
+        eau.center_x = ((debut_x + fin_x) / 2) * echelle_x
+        eau.center_y = self.window_height - ((debut_y + fin_y) / 2) * echelle_y
+        eau.alpha = 0
+        self.water.append(eau)
+
+
+    def _ajouter_vide_rectangle(self, bande, echelle_x, echelle_y, hauteur_image):
+        """Ajoute un rectangle invisible correspondant à une bande opaque."""
+        debut_x, fin_x, debut_y, fin_y = bande
+        if fin_y <= debut_y:
+            return
+
+        vide = arcade.SpriteSolidColor(
+            max(1, round((fin_x - debut_x) * echelle_x)),
+            max(1, round((fin_y - debut_y) * echelle_y)),
+            arcade.color.BLACK,
+        )
+        vide.center_x = ((debut_x + fin_x) / 2) * echelle_x
+        vide.center_y = self.window_height - ((debut_y + fin_y) / 2) * echelle_y
+        vide.alpha = 0
+        self.void.append(vide)
 
     def setup(self):
         """
@@ -124,6 +227,8 @@ class Level:
 
         self._ajouter_corps_termines()
         self._gerer_collisions_balles()
+        self._water_collision()
+        self._void_collision()
         self._resoudre_collisions_solides()
 
         marge = 60  # tolérance en pixels avant de considérer une entité "hors écran"
@@ -180,6 +285,10 @@ class Level:
             self.walls.append(Corpse(center_x=center_x, center_y=center_y))
         self._corpses_en_attente.clear()
 
+        for center_x, center_y in self._water_corpses_en_attente:
+            self.walkable.append(Corpse(center_x=center_x, center_y=center_y))
+        self._water_corpses_en_attente.clear()
+
     def _resoudre_collisions_solides(self):
         """
         Empêche le joueur de traverser les murs/obstacles (dont les Corpse).
@@ -210,10 +319,62 @@ class Level:
                     self.player.center_y += chevauchement_y
                 self.player.change_y = 0
 
+    
+    def _water_collision(self):
+        """
+        collision avec l'eau, le joueur meurt et création du corps.
+        """
+        if self.player is None or self.player.etat != "normal":
+            # Pendant le respawn, le joueur est figé/invulnérable : on ignore
+            # les collisions (évite un "coup de pied" au moment où le corps
+            # apparaît pile à sa position).
+            return
+
+        water_touch = arcade.check_for_collision_with_list(self.player, self.water)
+        walkable_touch = arcade.check_for_collision_with_list(self.player, self.walkable)
+        if len(water_touch) > 0 and len(walkable_touch) == 0:
+            for water in water_touch:
+                if self.player.right-5 < water.right and self.player.left+5 > water.left and self.player.top-5 < water.top and self.player.bottom+5 > water.bottom:
+                    self.player.fall_water()
+                    self._water_corpses_en_attente.append((self.player.center_x, self.player.center_y))
+
+    def _void_collision(self):
+        """
+        collision avec le vide, le joueur meurt et création du corps.
+        """
+        if self.player is None or self.player.etat != "normal":
+            # Pendant le respawn, le joueur est figé/invulnérable : on ignore
+            # les collisions (évite un "coup de pied" au moment où le corps
+            # apparaît pile à sa position).
+            return
+
+        void_touch = arcade.check_for_collision_with_list(self.player, self.void)
+        walkable_touch = arcade.check_for_collision_with_list(self.player, self.walkable)
+        if len(void_touch) > 0 and len(walkable_touch) == 0:
+            for void in void_touch:
+
+                if self.player.right-5 < void.right and self.player.left+5 > void.left and self.player.top-5 < void.top and self.player.bottom+5 > void.bottom:
+                    self.player.fall_water()
+                """
+                chevauchement_x = min(self.player.right, void.right) - max(self.player.left, void.left)
+                chevauchement_y = min(self.player.top, void.top) - max(self.player.bottom, void.bottom)
+
+                if chevauchement_x < chevauchement_y:
+                    if self.player.width > chevauchement_x:
+                        self.player.fall_water()
+                else:
+                    if self.player.height > chevauchement_y:
+                        self.player.fall_water()
+                """
+
+
+
     def draw(self):
         self.background.draw(pixelated=True)
         self.walls.draw(pixelated=True)
+        self.walkable.draw(pixelated=True)
         self.entities.draw(pixelated=True)
+        
 
 
 class EmptyLevel(Level):
@@ -221,7 +382,7 @@ class EmptyLevel(Level):
     pass
 
 
-class TurretDemoLevel(Level):
+class Puzzle1(Level):
     """
     Niveau de démonstration : le joueur en bas, une tourelle en haut qui
     vise et tire dessus. Sert d'exemple pour câbler une Turret dans un
@@ -241,4 +402,4 @@ class TurretDemoLevel(Level):
             fire_interval=1.2,
             bullet_speed=350,
         )
-        self.entities.append(tourelle)
+        #self.entities.append(tourelle)
