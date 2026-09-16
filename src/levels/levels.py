@@ -39,6 +39,8 @@ DOOR_PANEL = (112, 32, 144, 47)   # visible panel, aligned on the stone band
 DOOR_PANEL_COLOR = (120, 80, 50)
 DOORWAY_COLOR = (26, 22, 38)      # same dark as outside the room
 
+BACKGROUND_COLOR = (0x19, 0x14, 0x26)   # same dark as the maps' border
+
 # Holes painted into the map1 floor, measured on the artwork: each is a
 # 14x14 image-space square. Walking into one drops the player next to
 # another, picked at random.
@@ -59,7 +61,7 @@ class Level:
     """
 
     def __init__(self, window_width, window_height,
-                 background_color=arcade.color.DARK_SLATE_GRAY):
+                 background_color=BACKGROUND_COLOR):
         self.window_width = window_width
         self.window_height = window_height
         self.background_color = background_color
