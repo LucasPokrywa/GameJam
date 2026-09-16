@@ -79,3 +79,9 @@ Desktop.ini
 # =========================
 
 screenshots/
+
+# =========================
+# Logs generes par le jeu
+# =========================
+
+log.txt

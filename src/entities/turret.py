@@ -5,6 +5,15 @@ from enum import Enum
 from entities.bullet import Bullet
 from entities.damage import DeathCause
 from entities.entities import Entity
+import arcade
+
+# Load shot sound if available
+try:
+    projet_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    _SOUNDS_DIR = os.path.join(projet_root, "assets", "sounds")
+    _SHOT_SOUND = arcade.load_sound(os.path.join(_SOUNDS_DIR, "bullet-shot.ogg"))
+except Exception:
+    _SHOT_SOUND = None
 
 SPRITE = os.path.join(os.path.dirname(__file__), "..", "..",
                       "assets", "entities", "tower", "tower.png")
@@ -146,7 +155,6 @@ class Turret(Entity):
                 self.state = TurretState.IDLE
         elif self.state is TurretState.AIMING:
             if not self.detect_player(self.player):
-                # Player took cover mid-aim: shot cancelled.
                 self.state = TurretState.IDLE
             elif self._timer >= self.aim_duration:
                 self.fire()
@@ -182,6 +190,10 @@ class Turret(Entity):
             direction_y=dy / distance,
             speed=self.bullet_speed,
         )
-        # The speed is already scaled, it comes from self.bullet_speed.
         self.level.scale_to_window(bullet, speeds=False)
         self.level.entities.append(bullet)
+        try:
+            if _SHOT_SOUND is not None:
+                arcade.play_sound(_SHOT_SOUND, volume=2.0)
+        except Exception:
+            pass

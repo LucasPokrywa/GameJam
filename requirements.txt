@@ -1,5 +1,7 @@
 # Game
-arcade>=3.3.3
+# Le code utilise l'API arcade 3.x (draw_texture_rect, LBWH, draw_lrbt_*) :
+# une install en 2.x casse le jeu au premier écran.
+arcade>=3.0,<4.0
 
 # Graphics
 numpy>=2.3.3

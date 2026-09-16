@@ -17,6 +17,11 @@ import sys
 from enum import Enum, auto
 
 import arcade
+import os
+try:
+    import pyglet
+except Exception:
+    pyglet = None
 
 import ui
 from round_manager import RoundManager, RoundState, creer_rounds_par_defaut
@@ -33,7 +38,6 @@ MACOS = sys.platform == "darwin"
 NS_FULLSCREEN_PRIMARY = 1 << 7   # NSWindowCollectionBehaviorFullScreenPrimary
 
 DUREE_TUTO = 10.0  # secondes d'affichage du tutoriel avant de lancer le jeu
-
 
 class EtatJeu(Enum):
     """Les grands écrans du jeu."""
@@ -68,9 +72,16 @@ class MonJeu(arcade.Window):
         self.rm = RoundManager(creer_rounds_par_defaut())
         self.level = None
 
-        self.round_reussi = False   # mémorise l'issue du round pour l'écran de fin
+        # Music player / background theme
+        self._music_player = None
+        self._music_sound = None
+        self._music_playing = False
+        self._menu_click_sound = None
+        self._current_music = None
+        # Round & UI state
+        self.round_reussi = False
         self.tuto_timer = 0.0
-        self.pause_confirm_quit = False  # True quand la confirmation de quit est affichée
+        self.pause_confirm_quit = False
 
     def setup(self):
         """Initialisation unique (police, plein écran, état de départ)."""
@@ -82,6 +93,68 @@ class MonJeu(arcade.Window):
         else:
             self.set_fullscreen(True)   # arcade gère le viewport HiDPI correctement
         self._aller_menu()
+
+    def _start_music(self, filename: str = "main-theme.mp3", volume: float = 0.35):
+        """Start background music from `assets/sounds/{filename}`.
+
+        Uses pyglet where available for reliable looping; falls back to arcade.
+        """
+        if self._music_playing:
+            # If the requested file is already playing, do nothing.
+            if getattr(self, "_current_music", None) == filename:
+                return
+            # Otherwise stop current music and continue to start the requested one.
+            try:
+                self._stop_music()
+            except Exception:
+                pass
+        try:
+            projet_root = os.path.dirname(os.path.dirname(__file__))
+            chosen = os.path.join(projet_root, "assets", "sounds", filename)
+            if not os.path.exists(chosen):
+                return
+            # remember current music
+            self._current_music = filename
+
+            # Try pyglet player for reliable looping
+            if pyglet is not None:
+                try:
+                    source = pyglet.media.load(chosen)
+                    player = pyglet.media.Player()
+                    player.queue(source)
+                    # Set volume and loop behaviour
+                    try:
+                        player.volume = volume
+                    except Exception:
+                        pass
+                    try:
+                        player.loop = True
+                    except Exception:
+                        try:
+                            player.eos_action = 'loop'
+                        except Exception:
+                            pass
+                    player.play()
+                    self._music_player = player
+                    self._music_playing = True
+                    return
+                except Exception:
+                    self._music_player = None
+
+            # Fallback to arcade sound (may not loop depending on arcade version)
+            try:
+                self._music_sound = arcade.load_sound(chosen)
+                try:
+                    arcade.play_sound(self._music_sound, volume=volume, loop=True)
+                except TypeError:
+                    arcade.play_sound(self._music_sound, volume=volume)
+                self._music_playing = True
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+
 
     def _basculer_fenetre(self):
         """F11 : plein écran <-> fenêtré."""
@@ -110,6 +183,8 @@ class MonJeu(arcade.Window):
         self.etat = EtatJeu.MENU
         self.level = None
         arcade.set_background_color(arcade.color.BLACK)
+        # Start menu music
+        self._start_music(filename="menu-theme.mp3", volume=0.35)
 
     def _demarrer_partie(self):
         """Repart d'une partie neuve : round 1, écran de tutoriel."""
@@ -126,11 +201,13 @@ class MonJeu(arcade.Window):
         arcade.set_background_color(self.level.background_color)
         self.rm.start_round()
         self.etat = EtatJeu.JEU
+        self._start_music(filename="main-theme.mp3", volume=0.35)
 
     def _terminer_round(self, reussi):
         """Bascule vers l'écran de fin de round (réussi ou échoué)."""
         self.round_reussi = reussi
         self.etat = EtatJeu.FIN_ROUND
+        self._stop_music()
 
     def _apres_fin_round(self):
         """Action déclenchée par [Entree] sur l'écran de fin de round."""
@@ -181,7 +258,13 @@ class MonJeu(arcade.Window):
 
         elif self.etat == EtatJeu.JEU:
             self.level.draw()
-            ui.draw_hud(self.rm, self.width, self.height)
+            # Condition de victoire (haut-droite) : les sacrifices restants si le
+            # niveau a un autel, sinon la consigne générique du round.
+            objectif = None
+            altar = getattr(self.level, "altar", None)
+            if altar is not None:
+                objectif = "Sacrifices : {}".format(altar.progress_text())
+            ui.draw_hud(self.rm, self.width, self.height, objectif)
 
         elif self.etat == EtatJeu.PAUSE:
             if self.pause_confirm_quit:
@@ -207,18 +290,23 @@ class MonJeu(arcade.Window):
 
         if self.etat == EtatJeu.MENU:
             if key == arcade.key.ENTER:
+                self._play_menu_click()
                 self._demarrer_partie()
             elif key == arcade.key.ESCAPE:
+                self._play_menu_click()
                 self.close()
 
         elif self.etat == EtatJeu.TUTO:
             if key == arcade.key.ENTER:
+                self._play_menu_click()
                 self._charger_round_courant()   # passer le tutoriel
 
         elif self.etat == EtatJeu.JEU:
             if key == arcade.key.ESCAPE:
                 self.pause_confirm_quit = False
+                self._play_menu_click()
                 self.etat = EtatJeu.PAUSE
+                self._stop_music()
             elif key == arcade.key.N:
                 # DEBUG (temporaire) : valide le round à la main tant que les
                 # vraies conditions is_complete() des niveaux n'existent pas.
@@ -231,15 +319,20 @@ class MonJeu(arcade.Window):
             if self.pause_confirm_quit:
                 # Écran de confirmation "Quitter la partie ?"
                 if key in (arcade.key.O, arcade.key.Y):
+                    self._play_menu_click()
                     self._aller_menu()
                 elif key in (arcade.key.N, arcade.key.ESCAPE):
+                    self._play_menu_click()
                     self.pause_confirm_quit = False   # annule -> retour menu pause
             else:
                 # Menu pause
                 if key == arcade.key.ESCAPE:
-                    self.etat = EtatJeu.JEU            # reprendre
+                    self._play_menu_click()
+                    self.etat = EtatJeu.JEU
+                    self._start_music()
                 elif key == arcade.key.Q:
-                    self.pause_confirm_quit = True     # demander confirmation
+                    self._play_menu_click()
+                    self.pause_confirm_quit = True
 
         elif self.etat == EtatJeu.FIN_ROUND:
             if key == arcade.key.ENTER:
@@ -254,6 +347,52 @@ class MonJeu(arcade.Window):
     def on_key_release(self, key, modifiers):
         if self.etat == EtatJeu.JEU:
             self.level.player.on_key_release(key)
+
+    # ------------------------------------------------------------------ #
+    # Music helpers
+    # ------------------------------------------------------------------ #
+    
+
+    def _stop_music(self):
+        try:
+            if getattr(self, "_music_player", None) is not None:
+                try:
+                    self._music_player.pause()
+                except Exception:
+                    pass
+                try:
+                    self._music_player.delete()
+                except Exception:
+                    pass
+                self._music_player = None
+            # No reliable stop for arcade.play_sound fallback; just clear flag.
+            self._music_playing = False
+        except Exception:
+            pass
+
+    def _play_menu_click(self):
+        """Play the menu click sound once (lazy-loads the asset)."""
+        try:
+            if getattr(self, "_menu_click_sound", None) is None:
+                projet_root = os.path.dirname(os.path.dirname(__file__))
+                candidates = [
+                    os.path.join(projet_root, "assets", "sounds", "menu-click.mp3"),
+                    os.path.join(projet_root, "assets", "sounds", "menu-click.ogg"),
+                ]
+                chosen = None
+                for c in candidates:
+                    if os.path.exists(c):
+                        chosen = c
+                        break
+                if chosen is not None:
+                    self._menu_click_sound = arcade.load_sound(chosen)
+                else:
+                    self._menu_click_sound = None
+
+            if getattr(self, "_menu_click_sound", None) is not None:
+                arcade.play_sound(self._menu_click_sound, volume=0.7)
+        except Exception:
+            pass
 
 
 def main():

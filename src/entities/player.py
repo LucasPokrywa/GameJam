@@ -13,6 +13,7 @@ IDLE_FRAMES = 8
 
 DEATH_SHEET = os.path.join(ASSETS_DIR, "Death", "Death.png")
 DEATH_FRAMES = 6
+FOOTSTEP_INTERVAL = 0.18  # seconds between footstep sounds at normal walking speed (faster)
 
 # The skeleton only covers 16x20 px at the centre of each 64x64 frame; without
 # this crop the surrounding emptiness lands in the hit box. Same box for every
@@ -50,9 +51,9 @@ class Player(Entity):
             center_x=center_x,
             center_y=center_y,
         )
-        self.acceleration = 900.0
-        self.friction = 700.0
-        self.max_speed = 300.0
+        self.acceleration = 700.0
+        self.friction = 1000.0
+        self.max_speed = 220.0
         self.direction = "down"
 
         self.frame_duration = 0.08
@@ -90,6 +91,35 @@ class Player(Entity):
 
         # Called at the moment of death, player still in place.
         self.on_death = None
+
+        try:
+            projet_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            death_sound_path = os.path.join(projet_root, "assets", "sounds", "player-dying.mp3")
+            if os.path.exists(death_sound_path):
+                self._death_sound = arcade.load_sound(death_sound_path)
+            else:
+                self._death_sound = None
+        except Exception:
+            self._death_sound = None
+
+        # Load footstep sound (optional)
+        try:
+            projet_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            specific = os.path.join(projet_root, "assets", "sounds", "footstep-player.ogg")
+            generic = os.path.join(projet_root, "assets", "sounds", "footstep.ogg")
+            chosen = None
+            if os.path.exists(specific):
+                chosen = specific
+            elif os.path.exists(generic):
+                chosen = generic
+            if chosen is not None:
+                self._footstep_sound = arcade.load_sound(chosen)
+            else:
+                self._footstep_sound = None
+        except Exception:
+            self._footstep_sound = None
+
+        self._footstep_timer = 0.0
 
     @property
     def is_controllable(self) -> bool:
@@ -158,6 +188,11 @@ class Player(Entity):
         if self.on_death is not None:
             self.on_death(self)
 
+        try:
+            if getattr(self, "_death_sound", None) is not None:
+                arcade.play_sound(self._death_sound, volume=0.45)
+        except Exception:
+            pass
         self.state = PlayerState.DEAD
 
     def respawn(self, entry_point=None):
@@ -334,8 +369,17 @@ class Player(Entity):
         speed = (self.change_x ** 2 + self.change_y ** 2) ** 0.5
         if speed >= 5:
             self.set_animation_direction(f"run_{self.direction}")
+            # Play footstep periodically while moving
+            try:
+                self._footstep_timer -= delta_time
+                if self._footstep_timer <= 0.0 and getattr(self, "_footstep_sound", None) is not None:
+                    arcade.play_sound(self._footstep_sound, volume=0.9)
+                    self._footstep_timer = FOOTSTEP_INTERVAL
+            except Exception:
+                pass
         else:
             self.set_animation_direction(f"idle_{self.direction}")
+            self._footstep_timer = 0.0
 
         self.alpha = 255 if self._invulnerability_timer <= 0.0 else 140
 

@@ -1,6 +1,5 @@
 import math
 import os
-import random
 
 import arcade
 from PIL import Image
@@ -54,6 +53,7 @@ ListbackgroundPuzzle1 = [PUZZLE1_FLOOR, PUZZLE1_WATER, PUZZLE1_VOID, None]
 ListMasksPuzzle1 = [PUZZLE1_WALL_MASK, PUZZLE1_WATER, PUZZLE1_VOID]
 
 MAP_SIZE = 256   # the map1 PNGs are 256x256
+TILE_SIZE = 16   # the artwork is drawn on a 16 px grid, 16x16 tiles
 
 # Everything below is expressed in that 256x256 artwork space and converted
 # with world_point(), so the level follows the window instead of assuming the
@@ -66,9 +66,7 @@ REFERENCE_SCALE = 600 / MAP_SIZE
 
 # Both boxes are measured on the artwork above, in image coordinates.
 DOOR_GAP = (112, 0, 144, 48)      # punched out of the wall mask
-DOOR_PANEL = (112, 32, 144, 47)   # visible panel, aligned on the stone band
-DOOR_PANEL_COLOR = (120, 80, 50)
-DOORWAY_COLOR = (26, 22, 38)      # same dark as outside the room
+DOOR_PANEL = (112, 32, 144, 47)   # stone panel of the door layer
 
 BACKGROUND_COLOR = (0x19, 0x14, 0x26)   # same dark as the maps' border
 
@@ -188,6 +186,25 @@ class Level:
 
     def world_length(self, image_length) -> float:
         return image_length * self.map_scale
+
+    def snap_to_tile(self, sprite):
+        """
+        Centres the sprite on the map tile it stands on, and sizes it to fill
+        that tile exactly.
+
+        The size matters as much as the position: _standing_on() tests a
+        single point, so a body smaller than its tile would leave a seam of
+        unbridged water between two neighbours.
+        """
+        tile = self.world_length(TILE_SIZE)
+        column = int((sprite.center_x - self.map_left) // tile)
+        row = int((sprite.center_y - self.map_bottom) // tile)
+
+        sprite.width = tile
+        sprite.height = tile
+        sprite.center_x = self.map_left + (column + 0.5) * tile
+        sprite.center_y = self.map_bottom + (row + 0.5) * tile
+        return sprite
 
     def world_rect(self, image_box):
         """Turns a box of the 256x256 artwork into (center_x, center_y, w, h)."""
@@ -360,6 +377,11 @@ class Level:
 
         for bullet in bullets:
             if any(arcade.check_for_collision(bullet, o) for o in obstacles):
+                try:
+                    if BULLET_HIT_SOUND is not None:
+                        arcade.play_sound(BULLET_HIT_SOUND, volume=2)
+                except Exception:
+                    pass
                 bullet.remove_from_sprite_lists()
                 continue
 
@@ -367,6 +389,11 @@ class Level:
                 continue
 
             if arcade.check_for_collision(bullet, self.player):
+                try:
+                    if BULLET_HIT_SOUND is not None:
+                        arcade.play_sound(BULLET_HIT_SOUND, volume=2)
+                except Exception:
+                    pass
                 self.player.take_hit(bullet)
                 bullet.remove_from_sprite_lists()
                 break   # one bullet is enough to land the hit
@@ -495,6 +522,12 @@ class Level:
             return
 
         self.scale_to_window(corpse)
+
+        # A floating body is a walkable tile of the pool, so it has to line up
+        # with the water it bridges rather than with where the player fell.
+        if corpse.bridges_hazard():
+            self.snap_to_tile(corpse)
+
         self.corpses.append(corpse)
         self._refresh_obstacles()
 
@@ -558,18 +591,18 @@ class Level:
 
 class Door(Entity):
     """
-    Round exit, solid until the altar is filled. The wall itself is painted
-    into the floor artwork, so the panel is drawn on top for the opening to
-    be visible.
+    Round exit, solid until the altar is filled. Invisible like the other
+    walls: `closed_layer` is what shows it, and drops with it.
     """
 
-    def __init__(self, center_x, center_y, width, height):
+    def __init__(self, center_x, center_y, width, height, closed_layer):
         super().__init__(width=int(width), height=int(height),
                          center_x=center_x, center_y=center_y)
         self.acceleration = 0.0
         self.friction = 0.0
         self.max_speed = 0.0
-        self.color = DOOR_PANEL_COLOR
+        self.alpha = 0
+        self.closed_layer = closed_layer
         self.is_open = False
 
     def open(self):
@@ -577,6 +610,7 @@ class Door(Entity):
             return
         self.is_open = True
         self.remove_from_sprite_lists()
+        self.closed_layer.remove_from_sprite_lists()
 
 
 # Image-space placements, checked against the walls, the holes and the
@@ -598,17 +632,11 @@ class Level1(Level):
     def setup(self):
         self._load_level_scenery(ListbackgroundLevel1, ListMasksLevel1, gap=DOOR_GAP)
 
-        # The floor arrows point at the exit and stay visible.
-        self.background.append(self._layer(LEVEL1_DOOR))
+        # Closed state: the door layer covers the corridor the floor paints.
+        closed_layer = self._layer(LEVEL1_DOOR)
+        self.background.append(closed_layer)
 
-        # Dark doorway painted under the panel, so the hole in the wall shows
-        # once the panel is gone.
-        center_x, center_y, width, height = self.world_rect(DOOR_PANEL)
-        doorway = arcade.SpriteSolidColor(int(width), int(height), color=DOORWAY_COLOR)
-        doorway.center_x, doorway.center_y = center_x, center_y
-        self.background.append(doorway)
-
-        self.door = Door(center_x, center_y, width, height)
+        self.door = Door(*self.world_rect(DOOR_PANEL), closed_layer)
         self.walls.append(self.door)
 
         self.holes = [self.world_point(x, y) for x, y in LEVEL1_HOLES]
@@ -643,8 +671,6 @@ class Level1(Level):
 
         self.round_complete = False
 
-        self._objective_text = arcade.Text("", 12, self.window_height - 22,
-                                           arcade.color.WHITE, 12)
         self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
 
     def is_complete(self) -> bool:
@@ -666,17 +692,8 @@ class Level1(Level):
     def draw(self):
         super().draw()
 
-        if self.round_complete:
-            self._objective_text.text = "ROUND TERMINE"
-            self._objective_text.color = arcade.color.GOLD
-        elif self.door.is_open:
-            self._objective_text.text = "La porte est ouverte : rejoins le haut de la salle"
-            self._objective_text.color = arcade.color.GOLD
-        else:
-            self._objective_text.text = f"Sacrifices : {self.altar.progress_text()}"
-            self._objective_text.color = arcade.color.WHITE
-        self._objective_text.draw()
-
+        # L'objectif (sacrifices) est affiché par le HUD (ui.draw_hud) en haut à
+        # droite. Ici on ne garde que le récap joueur en bas à gauche.
         self._player_text.text = (
             f"Morts : {self.player.death_count}    Os : {self.player.resistance_bonus}"
         )
