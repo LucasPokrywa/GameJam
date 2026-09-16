@@ -34,6 +34,7 @@ KEEP_RESISTANCE_ON_DEATH = True
 
 class PlayerState(Enum):
     ALIVE = "alive"
+    STAKED = "staked"
     DYING = "dying"
     DEAD = "dead"
     RESPAWNING = "respawning"
@@ -79,6 +80,7 @@ class Player(Entity):
         self._state_timer = 0.0
         self._blink_timer = 0.0
         self._invulnerability_timer = 0.0
+        self.attached_stake = None
 
         self.is_armed = False
         self.resistance_bonus = 0
@@ -116,6 +118,33 @@ class Player(Entity):
         self.change_x = 0
         self.change_y = 0
         self.attack_active = False
+        self._play_death_animation()
+        return True
+
+    def impale_with_stake(self, stake):
+        """Attach a stake and let it drive the player into a wall."""
+        if not self.is_vulnerable:
+            return False
+
+        self.attached_stake = stake
+        stake.attached_player = self
+        self.state = PlayerState.STAKED
+        self.change_x = stake.change_x
+        self.change_y = stake.change_y
+        self.attack_active = False
+        return True
+
+    def crash_into_wall(self):
+        """Finish a stake hit when the carried player reaches a wall."""
+        if self.state is not PlayerState.STAKED:
+            return False
+
+        self.death_cause = DeathCause.DROWNING   # not really, but the corpse is a drowning corpse
+        self.attached_stake = None
+        self.change_x = 0
+        self.change_y = 0
+        self.state = PlayerState.DYING
+        self._state_timer = 0.0
         self._play_death_animation()
         return True
 
@@ -254,6 +283,8 @@ class Player(Entity):
 
         if self.state is PlayerState.DYING:
             self._update_dying(delta_time)
+        elif self.state is PlayerState.STAKED:
+            self._update_staked(delta_time)
         elif self.state is PlayerState.DEAD:
             self.state = PlayerState.RESPAWNING
             self._state_timer = 0.0
@@ -262,6 +293,9 @@ class Player(Entity):
             self._update_respawning(delta_time)
         else:
             self._update_alive(delta_time)
+
+    def _update_staked(self, delta_time: float):
+        super().update(delta_time)
 
     def _update_alive(self, delta_time: float):
         dx, dy = 0, 0

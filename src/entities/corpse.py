@@ -7,8 +7,8 @@ from entities.entities import Entity
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "entities", "corpse")
 
 FRAME_SIZE = 16
-DISPLAY_SIZE = 16
-SCALE_FACTOR = 2
+DISPLAY_SIZE = 24
+SCALE_FACTOR = DISPLAY_SIZE / FRAME_SIZE
 
 
 class CorpseType(Enum):
@@ -27,7 +27,7 @@ class CorpseState(Enum):
 # rather than silently falling back to some default corpse. None means the
 # body is lost and nothing is left behind.
 CAUSE_TO_TYPE = {
-    DeathCause.TOWER: CorpseType.WALL,
+    DeathCause.TOWER: CorpseType.BONES,
     DeathCause.ZOMBIE: CorpseType.BONES,
     DeathCause.DROWNING: CorpseType.RAFT,
     DeathCause.VOID: None,

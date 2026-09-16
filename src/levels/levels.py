@@ -5,6 +5,7 @@ import random
 import arcade
 from PIL import Image
 
+from entities.xbow import Xbow
 from entities.altar import SacrificeAltar
 from entities.corpse import Corpse, CorpseType
 from entities.bullet import Bullet
@@ -12,6 +13,7 @@ from entities.damage import DeathCause
 from entities.enemy import Zombie
 from entities.entities import Entity
 from entities.player import Player
+from entities.stake import Stake
 from entities.turret import Turret
 
 PUZZLE1_MAP_DIR = os.path.join(
@@ -357,6 +359,19 @@ class Level:
                 bullet.remove_from_sprite_lists()
                 break   # one bullet is enough to land the hit
 
+        stakes = [e for e in self.entities if isinstance(e, Stake)]
+        for stake in stakes:
+            if stake.attached_player is not None:
+                continue
+
+            if any(arcade.check_for_collision(stake, o) for o in obstacles):
+                stake.remove_from_sprite_lists()
+                continue
+
+            if self.player is not None and self.player.is_vulnerable \
+                    and arcade.check_for_collision(stake, self.player):
+                self.player.impale_with_stake(stake)
+
     def _handle_player_attack(self):
         if self.player is None or not self.player.attack_active:
             return
@@ -406,7 +421,9 @@ class Level:
             return
 
         if self._standing_on(self.player, self.void) is not None:
-            self.player.take_hit(DeathCause.VOID, fatal=True)
+            if self._standing_on(self.player, self.rafts()) is None:
+                self.player.take_hit(DeathCause.VOID, fatal=True)
+            return
 
     def _keep_enemies_off_hazards(self):
         """
@@ -477,10 +494,16 @@ class Level:
         """A zombie bumps into a wall corpse, exactly like the player does."""
         obstacles = self.solid_obstacles()
 
-        # Frozen while dying and respawning: skipping collisions avoids a
-        # kick when the corpse appears at the player's own position.
-        if self.player is not None and self.player.is_controllable:
-            self._push_out(self.player, obstacles)
+        if self.player is not None:
+            if self.player.attached_stake is not None:
+                if any(arcade.check_for_collision(self.player, wall)
+                       for wall in self.walls):
+                    stake = self.player.attached_stake
+                    self.player.crash_into_wall()
+                    if stake is not None:
+                        stake.remove_from_sprite_lists()
+            elif self.player.is_controllable:
+                self._push_out(self.player, obstacles)
 
         for enemy in list(self.enemies):
             self._push_out(enemy, obstacles)
@@ -668,6 +691,14 @@ class Puzzle1(Level):
         self._objective_text = arcade.Text("", 12, self.window_height - 22,
                                            arcade.color.WHITE, 12)
         self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
+
+    
+        x, y = self.world_point(14.5*16, 10.5*16)
+        self.entities.append(self.scale_to_window(Xbow(
+        center_x=x, center_y=y,
+        level=self, player=self.player,
+        fire_interval=1.4, bullet_speed=330, orientation="west"
+        )))
 
     def is_complete(self) -> bool:
         return self.round_complete
