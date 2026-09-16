@@ -41,6 +41,16 @@ VASE_SHEET = os.path.join(DECOR_DIR, "vase.png")
 VASE_FRAMES = 16
 
 
+LEVEL4_MAP_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "assets", "images", "map4"
+)
+LEVEL4_FLOOR = os.path.join(LEVEL4_MAP_DIR, "sol.png")
+LEVEL4_WALL_MASK = os.path.join(LEVEL4_MAP_DIR, "murs.png")
+LEVEL4_DOOR = os.path.join(LEVEL4_MAP_DIR, "porte.png")
+
+ListbackgroundLevel4 = [LEVEL4_FLOOR, None, None, None]
+ListMasksLevel4 = [LEVEL4_WALL_MASK, None, None]
+
 TUTO_MAP_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "assets", "images", "tuto"
 )
@@ -1186,6 +1196,111 @@ class Tutorial(Level):
 
     def update(self, delta_time: float):
         super().update(delta_time)
+
+        if (self.player.center_y >= self.door.bottom
+                and self.door.left <= self.player.center_x <= self.door.right):
+            self.round_complete = True
+
+    def draw(self):
+        super().draw()
+        self._player_text.text = (
+            f"Morts : {self.player.death_count}    Os : {self.player.resistance_bonus}"
+        )
+        self._player_text.draw()
+
+
+# Coordonnees image (256x256, grille de 16 px) ; cf. le plan dans map4/sol.png.
+LEVEL4_SPAWN = (184, 216)     # tuile (11, 13)
+LEVEL4_ALTAR = (56, 200)      # tuile (3, 12), dans le champ de la tourelle
+LEVEL4_TURRET = (184, 72)     # tuile (11, 4)
+LEVEL4_ZOMBIE = (216, 56)     # tuile (13, 3), l'angle oppose a l'autel : pres
+                              # de quatorze tuiles, soit sept secondes de
+                              # marche. Le feu gagne toujours la course.
+LEVEL4_TORCHES = ((104, 40), (184, 40))
+LEVEL4_VASES = ((88, 56), (152, 216), (216, 152))
+
+
+class Level4(Level):
+    """
+    Le cadavre-mur devient un outil : c'est le round qui exige enfin ce que le
+    pitch annonce, mourir sous une tour pour aveugler cette tour.
+
+    L'autel reclame un MUR et des OS, et il est plein champ. Sous le regard de
+    la tourelle on ne choisit pas sa mort : on est enflamme, on brule trois
+    secondes, on tombe en mur. Le zombie, lui, est lent — le feu gagne toujours
+    la course. D'ou trois morts, chacune avec une intention differente :
+
+    1. s'enflammer, courir mourir sur le socle du MUR ;
+    2. s'enflammer encore, mais tomber cette fois sur l'axe tourelle-autel,
+       hors des socles : ce corps-la coupe la ligne de vue ;
+    3. a l'abri de cette ombre, attendre le zombie sur le socle des OS.
+
+    L'ordre n'est pas interchangeable, et c'est le coeur du round : un cadavre
+    offert a l'autel passe en SACRIFICED, donc blocks_movement() devient faux
+    et il cesse d'arreter les tirs. Le mur qui protege ne peut pas etre celui
+    qu'on sacrifie — il en faut deux.
+    """
+
+    def setup(self):
+        self._load_level_scenery(ListbackgroundLevel4, ListMasksLevel4,
+                                 gap=DOOR_GAP)
+
+        closed_layer = self._layer(LEVEL4_DOOR)
+        self.background.append(closed_layer)
+        self.door = Door(*self.world_rect(DOOR_PANEL), closed_layer)
+        self.walls.append(self.door)
+
+        self.player = Player(*self.world_point(*LEVEL4_SPAWN))
+        self.scale_to_window(self.player)
+        self.entities.append(self.player)
+
+        self.altar = SacrificeAltar(
+            *self.world_point(*LEVEL4_ALTAR),
+            required_sacrifices={CorpseType.WALL: 1, CorpseType.BONES: 1},
+            on_unlock=self._open_door,
+            scale=self.sprite_scale,
+        )
+
+        x, y = self.world_point(*LEVEL4_TURRET)
+        self.entities.append(self.scale_to_window(Turret(
+            center_x=x, center_y=y, level=self, player=self.player,
+            # Cadence serree et balles rapides : a 1.4 s d'intervalle les
+            # premiers tirs manquaient un joueur en mouvement et le feu ne
+            # prenait qu'a 4 s, trop tard pour devancer le zombie.
+            fire_interval=0.9, bullet_speed=430,
+            # La diagonale tourelle-autel fait 425 px : avec la portee par
+            # defaut de 420 la tourelle ne voyait jamais le socle, et tout le
+            # niveau s'effondrait.
+            detection_range=620.0,
+        )))
+
+        # Zombie lent a dessein : il lui faut une bonne dizaine de secondes
+        # pour rejoindre l'autel, la ou le feu tue en trois. Sans cet ecart le
+        # joueur obtient ses os sans jamais avoir a aveugler la tourelle, et le
+        # round n'enseigne rien.
+        self.add_enemy(Zombie(*self.world_point(*LEVEL4_ZOMBIE),
+                              player=self.player, speed=55.0,
+                              detection_range=620.0))
+
+        for point in LEVEL4_TORCHES:
+            self.add_decoration(*point)
+        for point in LEVEL4_VASES:
+            self.add_decoration(*point, sheet=VASE_SHEET, frames=VASE_FRAMES)
+
+        self.round_complete = False
+        self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
+
+    def is_complete(self) -> bool:
+        return self.round_complete
+
+    def _open_door(self, altar):
+        self.door.open()
+
+    def update(self, delta_time: float):
+        super().update(delta_time)
+
+        if self.round_complete or not self.door.is_open:
+            return
 
         if (self.player.center_y >= self.door.bottom
                 and self.door.left <= self.player.center_x <= self.door.right):
