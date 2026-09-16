@@ -18,7 +18,7 @@ DEATH_FRAMES = 6
 # this crop the surrounding emptiness lands in the hit box. Same box for every
 # animation, otherwise the character jitters between them.
 CHARACTER_BOX = (23, 23, 39, 43)
-PLAYER_HEIGHT = 44
+PLAYER_HEIGHT = 32
 
 DYING_DURATION = 0.45
 RESPAWN_DURATION = 0.9

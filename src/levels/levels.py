@@ -33,6 +33,18 @@ LEVEL1_DOOR = os.path.join(LEVEL1_MAP_DIR, "porte_map_niveau1.png")
 ListbackgroundLevel1 = [LEVEL1_FLOOR, LEVEL1_WATER, LEVEL1_VOID, LEVEL1_PROPS]
 ListMasksLevel1 = [LEVEL1_WALL_MASK, LEVEL1_WATER, LEVEL1_VOID]
 
+PUZZLE0_MAP_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "assets", "images", "puzzle0"
+)
+
+PUZZLE0_FLOOR = os.path.join(PUZZLE0_MAP_DIR, "Puzzle0.png")
+PUZZLE0_WALL_MASK = os.path.join(PUZZLE0_MAP_DIR, "Walls.png")
+PUZZLE0_WATER = os.path.join(PUZZLE0_MAP_DIR, "Water.png")
+PUZZLE0_VOID = os.path.join(PUZZLE0_MAP_DIR, "Void.png")
+
+ListbackgroundPuzzle0 = [PUZZLE0_FLOOR, PUZZLE0_WATER, None, None]
+ListMasksPuzzle0 = [PUZZLE0_WALL_MASK, PUZZLE0_WATER, None]
+
 PUZZLE1_FLOOR = os.path.join(PUZZLE1_MAP_DIR, "Puzzle1.png")
 PUZZLE1_WALL_MASK = os.path.join(PUZZLE1_MAP_DIR, "Walls.png")
 PUZZLE1_WATER = os.path.join(PUZZLE1_MAP_DIR, "Water.png")
@@ -682,7 +694,7 @@ class Puzzle1(Level):
     def setup(self):
         self._load_level_scenery(ListbackgroundPuzzle1, ListMasksPuzzle1, gap=DOOR_GAP)
 
-        self.player = Player(*self.world_point(*LEVEL1_SPAWN))
+        self.player = Player(*self.world_point(*PUZZLE1_SPAWN))
         self.scale_to_window(self.player)
         self.entities.append(self.player)
 
@@ -691,6 +703,9 @@ class Puzzle1(Level):
         self._objective_text = arcade.Text("", 12, self.window_height - 22,
                                            arcade.color.WHITE, 12)
         self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
+
+        center_x, center_y, width, height = self.world_rect((24, (16*5)-8, 16, 16))
+        self.door = Door(center_x, center_y, width, height)
 
     
         x, y = self.world_point(14.5*16, 10.5*16)
@@ -705,6 +720,10 @@ class Puzzle1(Level):
 
     def update(self, delta_time: float):
         super().update(delta_time)
+        if (self.player.center_y >= self.door.bottom
+                and self.door.left <= self.player.center_x <= self.door.right):
+            self.round_complete = True
+                
 
     def draw(self):
         super().draw()
@@ -714,6 +733,48 @@ class Puzzle1(Level):
         )
         self._player_text.draw()
 
+PUZZLE0_SPAWN = (120, 200)
+
+class Puzzle0(Level):
+    """
+    First round on map1: two turrets, two zombies, the altar on the left and
+    the top door as the exit. Filling the altar opens it; walking through it
+    ends the round.
+    """
+
+    def setup(self):
+        self._load_level_scenery(ListbackgroundPuzzle0, ListMasksPuzzle0, gap=DOOR_GAP)
+
+        self.player = Player(*self.world_point(*PUZZLE0_SPAWN))
+        self.scale_to_window(self.player)
+        self.entities.append(self.player)
+
+        self.round_complete = False
+
+        self._objective_text = arcade.Text("", 12, self.window_height - 22,
+                                           arcade.color.WHITE, 12)
+        self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
+
+        center_x, center_y, width, height = self.world_rect((120, 24, 16, 16))
+        self.door = Door(center_x, center_y, width, height)
+
+    def is_complete(self) -> bool:
+        return self.round_complete
+
+    def update(self, delta_time: float):
+        super().update(delta_time)
+        if (self.player.center_y >= self.door.bottom
+                and self.door.left <= self.player.center_x <= self.door.right):
+            self.round_complete = True
+        
+
+    def draw(self):
+        super().draw()
+
+        self._player_text.text = (
+            f"Morts : {self.player.death_count}    Os : {self.player.resistance_bonus}"
+        )
+        self._player_text.draw()
 
 
 class TurretDemoLevel(Level):
