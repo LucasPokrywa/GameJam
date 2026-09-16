@@ -7,8 +7,8 @@ from entities.entities import Entity
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "entities", "corpse")
 
 FRAME_SIZE = 16
-DISPLAY_SIZE = 24
-SCALE_FACTOR = DISPLAY_SIZE / FRAME_SIZE
+DISPLAY_SIZE = 8
+SCALE_FACTOR = DISPLAY_SIZE / FRAME_SIZE * 8
 
 
 class CorpseType(Enum):

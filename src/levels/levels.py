@@ -704,7 +704,7 @@ class Puzzle1(Level):
                                            arcade.color.WHITE, 12)
         self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
 
-        center_x, center_y, width, height = self.world_rect((24, (16*5)-8, 16, 16))
+        center_x, center_y, width, height = self.world_rect((256-24, (16*7)-8, 16, 16))
         self.door = Door(center_x, center_y, width, height)
 
     
