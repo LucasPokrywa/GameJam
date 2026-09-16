@@ -25,7 +25,7 @@ except Exception:
 
 import ui
 from round_manager import RoundManager, RoundState, creer_rounds_par_defaut
-from levels.levels import Level1, Puzzle1, TurretDemoLevel, Puzzle0
+from levels.levels import Level1, Level3, Puzzle1, TurretDemoLevel, Puzzle0
 
 # arcade echantillonne ses textures en LINEAR par defaut, ce qui rend le pixel
 # art flou des que l'echelle n'est pas 1:1.
@@ -63,7 +63,7 @@ def creer_niveau(numero, largeur, hauteur):
     niveaux = {
         1:Puzzle0,
         2:Puzzle1,
-        3:Level1
+        3:Level3
     }
     classe_level = niveaux.get(numero, TurretDemoLevel)
     return classe_level(largeur, hauteur)

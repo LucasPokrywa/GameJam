@@ -33,6 +33,18 @@ LEVEL1_DOOR = os.path.join(LEVEL1_MAP_DIR, "porte_map_niveau1.png")
 ListbackgroundLevel1 = [LEVEL1_FLOOR, LEVEL1_WATER, LEVEL1_VOID, LEVEL1_PROPS]
 ListMasksLevel1 = [LEVEL1_WALL_MASK, LEVEL1_WATER, LEVEL1_VOID]
 
+LEVEL3_MAP_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "assets", "images", "map3"
+)
+LEVEL3_FLOOR = os.path.join(LEVEL3_MAP_DIR, "sol.png")
+LEVEL3_WALL_MASK = os.path.join(LEVEL3_MAP_DIR, "murs.png")
+LEVEL3_DOOR = os.path.join(LEVEL3_MAP_DIR, "porte.png")
+LEVEL3_WATER = os.path.join(LEVEL3_MAP_DIR, "eau.png")
+LEVEL3_VOID = os.path.join(LEVEL3_MAP_DIR, "vide.png")
+
+ListbackgroundLevel3 = [LEVEL3_FLOOR, LEVEL3_WATER, LEVEL3_VOID, None]
+ListMasksLevel3 = [LEVEL3_WALL_MASK, LEVEL3_WATER, LEVEL3_VOID]
+
 PUZZLE0_MAP_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "assets", "images", "puzzle0"
 )
@@ -935,6 +947,99 @@ class Puzzle0(Level):
     def draw(self):
         super().draw()
 
+        self._player_text.text = (
+            f"Morts : {self.player.death_count}    Os : {self.player.resistance_bonus}"
+        )
+        self._player_text.draw()
+
+
+# Coordonnees image (256x256, grille de 16 px) ; cf. le plan dans map3/sol.png.
+LEVEL3_SPAWN = (104, 200)     # tuile (6, 12)
+LEVEL3_ALTAR = (40, 112)      # fond de la chapelle, dos au mur ouest
+LEVEL3_TURRET = (152, 200)    # tuile (9, 12) : couvre tout le sol ouvert,
+                              # et aucune ligne de vue sur la chapelle
+LEVEL3_ZOMBIE = (208, 64)     # tuiles (12-13, 3-4), dans la cage
+# Haie en L, sur deux cotes de la cage : deux sorties independantes. Une seule
+# ouverture serait rescellee par un cadavre-mur (32 px) alors que le zombie en
+# fait 64 de large, et il resterait prisonnier.
+LEVEL3_HEDGE_WEST = (184, 64, 16, 32)
+LEVEL3_HEDGE_SOUTH = (200, 88, 48, 16)
+
+
+class Level3(Level):
+    """
+    Tutoriel de l'autel. Le zombie est enferme derriere une haie, la tourelle
+    enflamme le joueur, et le feu porte jusqu'a la haie libere le zombie.
+
+    L'autel est au fond d'une chapelle sans issue dont la bouche fait une tuile :
+    acculé par le zombie, le joueur meurt dessus sans l'avoir cherche, ce qui est
+    exactement la regle a apprendre. Cette chapelle sort aussi l'autel de la ligne
+    de tir de la tourelle, sinon un cadavre-mur pourrait condamner le socle.
+    """
+
+    def setup(self):
+        self._load_level_scenery(ListbackgroundLevel3, ListMasksLevel3,
+                                 gap=DOOR_GAP)
+
+        closed_layer = self._layer(LEVEL3_DOOR)
+        self.background.append(closed_layer)
+        self.door = Door(*self.world_rect(DOOR_PANEL), closed_layer)
+        self.walls.append(self.door)
+
+        self.player = Player(*self.world_point(*LEVEL3_SPAWN))
+        self.scale_to_window(self.player)
+        self.entities.append(self.player)
+
+        self.altar = SacrificeAltar(
+            *self.world_point(*LEVEL3_ALTAR),
+            required_sacrifices={CorpseType.BONES: 1},
+            on_unlock=self._open_door,
+            scale=self.sprite_scale,
+        )
+
+        for box in (LEVEL3_HEDGE_WEST, LEVEL3_HEDGE_SOUTH):
+            hedge_x, hedge_y, hedge_width, hedge_height = box
+            hedge = BurnableObstacle(
+                *self.world_point(hedge_x, hedge_y),
+                self.world_length(hedge_width),
+                self.world_length(hedge_height),
+                art_size=(hedge_width, hedge_height),
+            )
+            self.burnable_obstacles.append(hedge)
+            self.entities.append(hedge)
+
+        x, y = self.world_point(*LEVEL3_TURRET)
+        self.entities.append(self.scale_to_window(Turret(
+            center_x=x, center_y=y, level=self, player=self.player,
+            fire_interval=1.4, bullet_speed=330,
+        )))
+
+        # Portee large : une fois libere, le zombie doit traverser la salle pour
+        # aller chercher le joueur, sinon il reste devant sa cage.
+        self.add_enemy(Zombie(*self.world_point(*LEVEL3_ZOMBIE),
+                              player=self.player, detection_range=420.0))
+
+        self.round_complete = False
+        self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
+
+    def is_complete(self) -> bool:
+        return self.round_complete
+
+    def _open_door(self, altar):
+        self.door.open()
+
+    def update(self, delta_time: float):
+        super().update(delta_time)
+
+        if self.round_complete or not self.door.is_open:
+            return
+
+        if (self.player.center_y >= self.door.bottom
+                and self.door.left <= self.player.center_x <= self.door.right):
+            self.round_complete = True
+
+    def draw(self):
+        super().draw()
         self._player_text.text = (
             f"Morts : {self.player.death_count}    Os : {self.player.resistance_bonus}"
         )
