@@ -1,3 +1,4 @@
+import os
 from enum import Enum
 
 import arcade
@@ -10,6 +11,17 @@ EMPTY_SLOT_COLORS = {
     CorpseType.RAFT: (80, 110, 145),
 }
 FILLED_SLOT_COLOR = (200, 170, 80)
+
+ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "..",
+                          "assets", "entities", "altar")
+FRAME_SIZE = 20   # a 20 px sprite at SLOT_SIZE 40 keeps the pixel grid (scale 2)
+
+SLOT_SPRITES = {
+    CorpseType.WALL: "slot_wall.png",
+    CorpseType.BONES: "slot_bones.png",
+    CorpseType.RAFT: "slot_raft.png",
+}
+FILLED_SPRITE = "slot_filled.png"
 
 SLOT_SIZE = 40   # a 32 px corpse laid on it still overlaps generously
 SLOT_SPACING = 64
@@ -41,6 +53,29 @@ class Slot(Entity):
 
         self.required_type = required_type
         self.corpse = None
+        self._textured = self._load_sprites()
+
+    def _load_sprites(self) -> bool:
+        """Textured slot when the art is there, flat colour otherwise."""
+        empty = os.path.join(ASSETS_DIR, SLOT_SPRITES[self.required_type])
+        filled = os.path.join(ASSETS_DIR, FILLED_SPRITE)
+        if not (os.path.exists(empty) and os.path.exists(filled)):
+            return False
+
+        size = self.width   # load_animation resizes the sprite to the texture
+        self.load_animation("empty", empty, FRAME_SIZE, FRAME_SIZE, 1)
+        self.load_animation("filled", filled, FRAME_SIZE, FRAME_SIZE, 1)
+        self.set_animation_direction("empty")
+        self.scale = max(1, round(size / FRAME_SIZE))   # keep the pixel grid
+        self.color = arcade.color.WHITE   # the placeholder colour would tint it
+        self.sync_hit_box_to_texture()
+        return True
+
+    def _show(self, animation, fallback_color):
+        if self._textured:
+            self.set_animation_direction(animation)
+        else:
+            self.color = fallback_color
 
     @property
     def is_filled(self) -> bool:
@@ -54,13 +89,13 @@ class Slot(Entity):
         corpse.slot = self
         corpse.center_x = self.center_x
         corpse.center_y = self.center_y
-        self.color = FILLED_SLOT_COLOR
+        self._show("filled", FILLED_SLOT_COLOR)
 
     def clear(self):
         if self.corpse is not None:
             self.corpse.slot = None
         self.corpse = None
-        self.color = EMPTY_SLOT_COLORS[self.required_type]
+        self._show("empty", EMPTY_SLOT_COLORS[self.required_type])
 
 
 class SacrificeAltar:

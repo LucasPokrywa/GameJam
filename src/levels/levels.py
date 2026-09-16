@@ -1,5 +1,6 @@
 import math
 import os
+import tempfile
 
 import arcade
 from PIL import Image
@@ -69,6 +70,9 @@ DOOR_GAP = (112, 0, 144, 48)      # punched out of the wall mask
 DOOR_PANEL = (112, 32, 144, 47)   # stone panel of the door layer
 
 BACKGROUND_COLOR = (0x19, 0x14, 0x26)   # same dark as the maps' border
+
+BURNABLE_TILE = os.path.join(os.path.dirname(__file__), "..", "..",
+                             "assets", "entities", "burnable", "foliage.png")
 
 BURNABLE_GREEN = (70, 190, 80)
 BURNABLE_ORANGE = (255, 135, 35)
@@ -166,12 +170,12 @@ class Level:
 
     def scale_to_window(self, sprite, speeds=True):
         factor = self.sprite_scale
-        if factor == 1.0:
-            return sprite
 
         current = sprite.scale
         base = current[0] if hasattr(current, "__getitem__") else current
-        sprite.scale = base * factor
+        # Rounded: a fractional scale spreads one art pixel over 3 screen
+        # pixels here and 4 there, which reads as blur on pixel art.
+        sprite.scale = max(1, round(base * factor))
 
         if not speeds:
             return sprite
@@ -644,13 +648,13 @@ class Door(Entity):
 
 
 class BurnableObstacle(Entity):
-    """A solid green block that burns away when touched by a burning player."""
+    """A solid green hedge that burns away when touched by a burning player."""
 
     GREEN_DURATION = 0.35
     ORANGE_DURATION = 0.35
     FADE_DURATION = 0.8
 
-    def __init__(self, center_x, center_y, width, height):
+    def __init__(self, center_x, center_y, width, height, art_size=None):
         super().__init__(width=int(width), height=int(height),
                          color=BURNABLE_GREEN, center_x=center_x,
                          center_y=center_y)
@@ -658,6 +662,36 @@ class BurnableObstacle(Entity):
         self.phase_timer = 0.0
         self.is_destroyed = False
         self.alpha = 255
+
+        if art_size is not None:
+            self._load_texture(*art_size)
+
+    def _load_texture(self, art_width, art_height):
+        """
+        Repeats the foliage tile over the obstacle. The tile is greyscale on
+        purpose: self.color keeps tinting it green, then orange, then ash.
+        """
+        if not os.path.exists(BURNABLE_TILE):
+            return
+
+        columns = max(1, round(art_width / TILE_SIZE))
+        rows = max(1, round(art_height / TILE_SIZE))
+        tile = Image.open(BURNABLE_TILE).convert("RGBA")
+        sheet = Image.new("RGBA", (TILE_SIZE * columns, TILE_SIZE * rows))
+        for column in range(columns):
+            for row in range(rows):
+                sheet.paste(tile, (column * TILE_SIZE, row * TILE_SIZE))
+
+        width, height = self.width, self.height
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = os.path.join(temp_dir, "burnable.png")
+            sheet.save(path)
+            self.load_animation("idle", path, sheet.width, sheet.height, 1)
+        self.set_animation_direction("idle")
+        # load_animation resizes the sprite to the texture; the obstacle keeps
+        # the size the level asked for, so collisions do not move.
+        self.width, self.height = width, height
+        self.sync_hit_box_to_texture()
 
     def blocks_movement(self) -> bool:
         return not self.is_destroyed
@@ -815,6 +849,7 @@ class Puzzle1(Level):
             *self.world_point(obstacle_x, obstacle_y),
             self.world_length(obstacle_width),
             self.world_length(obstacle_height),
+            art_size=(obstacle_width, obstacle_height),
         )
         self.burnable_obstacles.append(obstacle)
         self.entities.append(obstacle)

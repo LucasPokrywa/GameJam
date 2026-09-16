@@ -73,6 +73,25 @@ class Entity(arcade.SpriteSolidColor):
 
         self.animations[name] = textures
 
+    def sync_hit_box_to_texture(self):
+        """
+        Rebuilds the hit box from the current texture.
+
+        arcade only refreshes it when the sprite still carries its default
+        texture (see Sprite.texture setter), so a SpriteSolidColor that gets a
+        real texture keeps its placeholder rectangle and scales it a second
+        time. Call this after load_animation() and after setting the final
+        width / height.
+        """
+        if self.texture is None:
+            return
+        self.hit_box = arcade.hitbox.RotatableHitBox(
+            self.texture.hit_box_points,
+            position=self.position,
+            angle=self.angle,
+            scale=self.scale,
+        )
+
     def set_animation_direction(self, name):
         if name not in self.animations or name == self.current_animation:
             return

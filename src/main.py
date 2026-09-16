@@ -27,6 +27,10 @@ import ui
 from round_manager import RoundManager, RoundState, creer_rounds_par_defaut
 from levels.levels import Level1, Puzzle1, TurretDemoLevel, Puzzle0
 
+# arcade echantillonne ses textures en LINEAR par defaut, ce qui rend le pixel
+# art flou des que l'echelle n'est pas 1:1.
+arcade.SpriteList.DEFAULT_TEXTURE_FILTER = arcade.gl.NEAREST, arcade.gl.NEAREST
+
 LARGEUR_ECRAN = 800
 HAUTEUR_ECRAN = 600
 TITRE = "MANY MEN"
