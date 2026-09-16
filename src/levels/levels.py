@@ -31,10 +31,10 @@ LEVEL1_DOOR = os.path.join(LEVEL1_MAP_DIR, "porte_map_niveau1.png")
 ListbackgroundLevel1 = [LEVEL1_FLOOR, LEVEL1_WATER, LEVEL1_VOID, LEVEL1_PROPS]
 ListMasksLevel1 = [LEVEL1_WALL_MASK, LEVEL1_WATER, LEVEL1_VOID]
 
-PUZZLE1_FLOOR = os.path.join(PUZZLE1_MAP_DIR, "fond.png")
-PUZZLE1_WALL_MASK = os.path.join(PUZZLE1_MAP_DIR, "map1.png")
-PUZZLE1_WATER = os.path.join(PUZZLE1_MAP_DIR, "water1.png")
-PUZZLE1_VOID = os.path.join(PUZZLE1_MAP_DIR, "void1.png")
+PUZZLE1_FLOOR = os.path.join(PUZZLE1_MAP_DIR, "Puzzle1.png")
+PUZZLE1_WALL_MASK = os.path.join(PUZZLE1_MAP_DIR, "Walls.png")
+PUZZLE1_WATER = os.path.join(PUZZLE1_MAP_DIR, "Water.png")
+PUZZLE1_VOID = os.path.join(PUZZLE1_MAP_DIR, "Void.png")
 
 ListbackgroundPuzzle1 = [PUZZLE1_FLOOR, PUZZLE1_WATER, PUZZLE1_VOID, None]
 ListMasksPuzzle1 = [PUZZLE1_WALL_MASK, PUZZLE1_WATER, PUZZLE1_VOID]
@@ -191,13 +191,18 @@ class Level:
         so repainting them is enough to move a hazard.
         """
         self.background.append(self._layer(Listbackground[0]))
-        self.background.append(self._layer(Listbackground[1]))
-        self.background.append(self._layer(Listbackground[2]))
-        self.background.append(self._layer(Listbackground[3]))
+        if Listbackground[1]:
+            self.background.append(self._layer(Listbackground[1]))
+        if Listbackground[2]:
+            self.background.append(self._layer(Listbackground[2]))
+        if Listbackground[3]:
+            self.background.append(self._layer(Listbackground[3]))
 
         self._mask_to_sprites(ListMasks[0], self.walls, skip=gap)
-        self._mask_to_sprites(ListMasks[1], self.water)
-        self._mask_to_sprites(ListMasks[2], self.void)
+        if ListMasks[1]:
+            self._mask_to_sprites(ListMasks[1], self.water)
+        if ListMasks[2]:
+            self._mask_to_sprites(ListMasks[2], self.void)
 
     def _mask_runs(self, path, skip=None):
         """

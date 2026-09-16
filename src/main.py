@@ -53,7 +53,7 @@ def creer_niveau(numero, largeur, hauteur):
     d'ajouter les suivants ici au fur et à mesure du level-design.
     """
     niveaux = {
-        1: Level1,
+        1: Puzzle1,
         # 2: Level2, ...  <- à compléter avec le level-design final
     }
     classe_level = niveaux.get(numero, TurretDemoLevel)
