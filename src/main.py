@@ -13,6 +13,7 @@ volontairement séparés : ce fichier est la "colle" qui, à chaque round, crée
 bon Level, lance le chrono, compte les morts et enchaîne sur l'écran suivant.
 """
 
+import sys
 from enum import Enum, auto
 
 import arcade
@@ -24,6 +25,12 @@ from levels.levels import Level1, TurretDemoLevel
 LARGEUR_ECRAN = 800
 HAUTEUR_ECRAN = 600
 TITRE = "MANY MEN"
+
+# set_fullscreen() de pyglet ne fait pas le plein écran macOS : il recrée une
+# fenêtre sans bordure qui capture l'écran. On passe par toggleFullScreen: de
+# Cocoa, ce que déclenche le bouton vert.
+MACOS = sys.platform == "darwin"
+NS_FULLSCREEN_PRIMARY = 1 << 7   # NSWindowCollectionBehaviorFullScreenPrimary
 
 DUREE_TUTO = 10.0  # secondes d'affichage du tutoriel avant de lancer le jeu
 
@@ -67,12 +74,21 @@ class MonJeu(arcade.Window):
     def setup(self):
         """Initialisation unique (police, plein écran, état de départ)."""
         ui.charger_police()
-        self.set_fullscreen(True)   # arcade gère le viewport HiDPI correctement
+        if MACOS:
+            # Avant arcade.run(), toggleFullScreen: laisse la fenêtre dans une
+            # taille bâtarde : on attend le premier tick.
+            arcade.schedule_once(lambda _dt: self._basculer_fenetre(), 0)
+        else:
+            self.set_fullscreen(True)   # arcade gère le viewport HiDPI correctement
         self._aller_menu()
 
     def _basculer_fenetre(self):
         """F11 : plein écran <-> fenêtré."""
-        self.set_fullscreen(not self.fullscreen)
+        if MACOS:
+            self._nswindow.setCollectionBehavior_(NS_FULLSCREEN_PRIMARY)
+            self._nswindow.toggleFullScreen_(None)
+        else:
+            self.set_fullscreen(not self.fullscreen)
 
     def on_resize(self, width, height):
         """
