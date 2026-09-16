@@ -1,5 +1,6 @@
 # Game
-arcade>=3.3.3
+# Pin to 2.x so it installs on Python 3.9 environments
+arcade>=2.6.17,<3.0
 
 # Graphics
 numpy>=2.3.3
