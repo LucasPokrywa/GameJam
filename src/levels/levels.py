@@ -14,6 +14,10 @@ from entities.entities import Entity
 from entities.player import Player
 from entities.turret import Turret
 
+PUZZLE1_MAP_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "assets", "images", "puzzle1"
+)
+
 LEVEL1_MAP_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "assets", "images", "map1"
 )
@@ -23,6 +27,17 @@ LEVEL1_WATER = os.path.join(LEVEL1_MAP_DIR, "eau_map_niveau1.png")
 LEVEL1_VOID = os.path.join(LEVEL1_MAP_DIR, "vide_map_niveau1.png")
 LEVEL1_PROPS = os.path.join(LEVEL1_MAP_DIR, "decors_map_niveau1.png")
 LEVEL1_DOOR = os.path.join(LEVEL1_MAP_DIR, "porte_map_niveau1.png")
+
+ListbackgroundLevel1 = [LEVEL1_FLOOR, LEVEL1_WATER, LEVEL1_VOID, LEVEL1_PROPS]
+ListMasksLevel1 = [LEVEL1_WALL_MASK, LEVEL1_WATER, LEVEL1_VOID]
+
+PUZZLE1_FLOOR = os.path.join(PUZZLE1_MAP_DIR, "fond.png")
+PUZZLE1_WALL_MASK = os.path.join(PUZZLE1_MAP_DIR, "map1.png")
+PUZZLE1_WATER = os.path.join(PUZZLE1_MAP_DIR, "water1.png")
+PUZZLE1_VOID = os.path.join(PUZZLE1_MAP_DIR, "void1.png")
+
+ListbackgroundPuzzle1 = [PUZZLE1_FLOOR, PUZZLE1_WATER, PUZZLE1_VOID, None]
+ListMasksPuzzle1 = [PUZZLE1_WALL_MASK, PUZZLE1_WATER, PUZZLE1_VOID]
 
 MAP_SIZE = 256   # the map1 PNGs are 256x256
 
@@ -166,7 +181,7 @@ class Level:
         center_x, center_y = self.world_point((x0 + x1) / 2, (y0 + y1) / 2)
         return center_x, center_y, self.world_length(x1 - x0), self.world_length(y1 - y0)
 
-    def _load_level1_scenery(self, gap=None):
+    def _load_level_scenery(self, Listbackground, ListMasks, gap=None):
         """
         Map1 layers, then the opaque pixels of its masks turned into walls and
         into lethal ground. `gap` (image coordinates) is ignored from the wall
@@ -175,14 +190,14 @@ class Level:
         The water and void PNGs are both the artwork and the collision mask,
         so repainting them is enough to move a hazard.
         """
-        self.background.append(self._layer(LEVEL1_FLOOR))
-        self.background.append(self._layer(LEVEL1_WATER))
-        self.background.append(self._layer(LEVEL1_VOID))
-        self.background.append(self._layer(LEVEL1_PROPS))
+        self.background.append(self._layer(Listbackground[0]))
+        self.background.append(self._layer(Listbackground[1]))
+        self.background.append(self._layer(Listbackground[2]))
+        self.background.append(self._layer(Listbackground[3]))
 
-        self._mask_to_sprites(LEVEL1_WALL_MASK, self.walls, skip=gap)
-        self._mask_to_sprites(LEVEL1_WATER, self.water)
-        self._mask_to_sprites(LEVEL1_VOID, self.void)
+        self._mask_to_sprites(ListMasks[0], self.walls, skip=gap)
+        self._mask_to_sprites(ListMasks[1], self.water)
+        self._mask_to_sprites(ListMasks[2], self.void)
 
     def _mask_runs(self, path, skip=None):
         """
@@ -541,7 +556,7 @@ class Level1(Level):
     """
 
     def setup(self):
-        self._load_level1_scenery(gap=DOOR_GAP)
+        self._load_level_scenery(ListbackgroundLevel1, ListMasksLevel1, gap=DOOR_GAP)
 
         # The floor arrows point at the exit and stay visible.
         self.background.append(self._layer(LEVEL1_DOOR))
@@ -626,6 +641,43 @@ class Level1(Level):
             f"Morts : {self.player.death_count}    Os : {self.player.resistance_bonus}"
         )
         self._player_text.draw()
+
+PUZZLE1_SPAWN = (128, 200)
+
+class Puzzle1(Level):
+    """
+    First round on map1: two turrets, two zombies, the altar on the left and
+    the top door as the exit. Filling the altar opens it; walking through it
+    ends the round.
+    """
+
+    def setup(self):
+        self._load_level_scenery(ListbackgroundPuzzle1, ListMasksPuzzle1, gap=DOOR_GAP)
+
+        self.player = Player(*self.world_point(*LEVEL1_SPAWN))
+        self.scale_to_window(self.player)
+        self.entities.append(self.player)
+
+        self.round_complete = False
+
+        self._objective_text = arcade.Text("", 12, self.window_height - 22,
+                                           arcade.color.WHITE, 12)
+        self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
+
+    def is_complete(self) -> bool:
+        return self.round_complete
+
+    def update(self, delta_time: float):
+        super().update(delta_time)
+
+    def draw(self):
+        super().draw()
+
+        self._player_text.text = (
+            f"Morts : {self.player.death_count}    Os : {self.player.resistance_bonus}"
+        )
+        self._player_text.draw()
+
 
 
 class TurretDemoLevel(Level):
