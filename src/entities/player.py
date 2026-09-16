@@ -18,8 +18,10 @@ FOOTSTEP_INTERVAL = 0.18  # seconds between footstep sounds at normal walking sp
 # The skeleton only covers 16x20 px at the centre of each 64x64 frame; without
 # this crop the surrounding emptiness lands in the hit box. Same box for every
 # animation, otherwise the character jitters between them.
-CHARACTER_BOX = (23, 23, 39, 43)
-PLAYER_HEIGHT = 44
+# Keep the collision width slightly narrower than a 16 px map tile so the
+# player can pass through one-tile corridors after the sprite is scaled.
+CHARACTER_BOX = (25, 23, 37, 43)
+PLAYER_HEIGHT = 32
 
 DYING_DURATION = 0.45
 RESPAWN_DURATION = 0.9
