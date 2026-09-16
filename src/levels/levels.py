@@ -33,6 +33,16 @@ LEVEL1_DOOR = os.path.join(LEVEL1_MAP_DIR, "porte_map_niveau1.png")
 ListbackgroundLevel1 = [LEVEL1_FLOOR, LEVEL1_WATER, LEVEL1_VOID, LEVEL1_PROPS]
 ListMasksLevel1 = [LEVEL1_WALL_MASK, LEVEL1_WATER, LEVEL1_VOID]
 
+TUTO_MAP_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "assets", "images", "tuto"
+)
+TUTO_FLOOR = os.path.join(TUTO_MAP_DIR, "sol.png")
+TUTO_WALL_MASK = os.path.join(TUTO_MAP_DIR, "murs.png")
+TUTO_WATER = os.path.join(TUTO_MAP_DIR, "eau.png")
+
+ListbackgroundTuto = [TUTO_FLOOR, TUTO_WATER, None, None]
+ListMasksTuto = [TUTO_WALL_MASK, TUTO_WATER, None]
+
 LEVEL3_MAP_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "assets", "images", "map3"
 )
@@ -1033,6 +1043,70 @@ class Level3(Level):
 
         if self.round_complete or not self.door.is_open:
             return
+
+        if (self.player.center_y >= self.door.bottom
+                and self.door.left <= self.player.center_x <= self.door.right):
+            self.round_complete = True
+
+    def draw(self):
+        super().draw()
+        self._player_text.text = (
+            f"Morts : {self.player.death_count}    Os : {self.player.resistance_bonus}"
+        )
+        self._player_text.draw()
+
+
+# Coordonnees image (256x256, grille de 16 px) ; cf. le plan dans tuto/sol.png.
+TUTO_SPAWN = (120, 200)      # tuile (7, 12), dans le hall bas
+TUTO_XBOW = (200, 112)       # milieu du couloir, tire vers l'ouest
+
+
+class Tutorial(Level):
+    """
+    Round d'ouverture. Il n'a pas d'objectif a deviner : il montre deux regles,
+    dans l'ordre ou les niveaux suivants les reclament.
+
+    1. La riviere barre toute la salle et tue au contact. Un noye laisse un
+       corps qui flotte : on se noie deux fois pour se batir un gue de ses
+       propres cadavres. C'est la regle centrale du jeu, montree avant d'etre
+       exigee.
+    2. Au-dela, le seul passage est un couloir balaye dans sa longueur par une
+       arbalete. Le pieu ne tue pas sur le coup : il emporte le joueur jusqu'au
+       mur du fond. On decouvre la poussee ici, ou elle ne coute qu'un
+       aller-retour, plutot qu'au round 2 ou elle fait partie du puzzle.
+
+    Le couloir fait deux tuiles de haut, ce qui n'est pas decoratif : a une
+    tuile le joueur (40 px pour 37 de couloir) touche en permanence les parois
+    et s'ecrase des qu'il est embroche, a trois il passe sous le tir sans
+    jamais le rencontrer.
+
+    La porte n'a aucune condition : elle n'est donc pas dessinee fermee et
+    n'entre pas dans self.walls, sinon on traverserait un battant clos.
+    """
+
+    def setup(self):
+        self._load_level_scenery(ListbackgroundTuto, ListMasksTuto, gap=DOOR_GAP)
+
+        self.player = Player(*self.world_point(*TUTO_SPAWN))
+        self.scale_to_window(self.player)
+        self.entities.append(self.player)
+
+        self.door = Door(*self.world_rect(DOOR_PANEL))
+
+        x, y = self.world_point(*TUTO_XBOW)
+        self.entities.append(self.scale_to_window(Xbow(
+            center_x=x, center_y=y, level=self, player=self.player,
+            fire_interval=2.6, bullet_speed=280, orientation="west",
+        )))
+
+        self.round_complete = False
+        self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
+
+    def is_complete(self) -> bool:
+        return self.round_complete
+
+    def update(self, delta_time: float):
+        super().update(delta_time)
 
         if (self.player.center_y >= self.door.bottom
                 and self.door.left <= self.player.center_x <= self.door.right):
