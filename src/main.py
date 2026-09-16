@@ -393,7 +393,7 @@ class MonJeu(arcade.Window):
                 arcade.play_sound(self._menu_click_sound, volume=0.7)
         except Exception:
             pass
-
+ 
 
 def main():
     jeu = MonJeu()

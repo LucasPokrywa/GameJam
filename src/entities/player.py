@@ -169,7 +169,7 @@ class Player(Entity):
         if self.state is not PlayerState.STAKED:
             return False
 
-        self.death_cause = DeathCause.TOWER
+        self.death_cause = DeathCause.DROWNING #pour avoir un corps plateforme
         self.attached_stake = None
         self.change_x = 0
         self.change_y = 0
