@@ -7,13 +7,15 @@ from entities.entities import Entity
 EMPTY_SLOT_COLORS = {
     CorpseType.WALL: (120, 125, 140),
     CorpseType.BONES: (170, 160, 130),
+    CorpseType.RAFT: (80, 110, 145),
 }
 FILLED_SLOT_COLOR = (200, 170, 80)
 
 SLOT_SIZE = 40   # a 32 px corpse laid on it still overlaps generously
 SLOT_SPACING = 64
 
-SLOT_LABELS = {CorpseType.WALL: "mur", CorpseType.BONES: "os"}
+SLOT_LABELS = {CorpseType.WALL: "mur", CorpseType.BONES: "os",
+               CorpseType.RAFT: "radeau"}
 
 
 class AltarState(Enum):

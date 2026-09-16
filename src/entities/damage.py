@@ -9,6 +9,8 @@ class DeathCause(Enum):
 
     TOWER = "tower"
     ZOMBIE = "zombie"
+    DROWNING = "drowning"
+    VOID = "void"
     NONE = "none"
 
 

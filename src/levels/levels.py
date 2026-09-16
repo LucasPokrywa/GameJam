@@ -8,6 +8,7 @@ from PIL import Image
 from entities.altar import SacrificeAltar
 from entities.corpse import Corpse, CorpseType
 from entities.bullet import Bullet
+from entities.damage import DeathCause
 from entities.enemy import Zombie
 from entities.entities import Entity
 from entities.player import Player
@@ -19,6 +20,7 @@ LEVEL1_MAP_DIR = os.path.join(
 LEVEL1_FLOOR = os.path.join(LEVEL1_MAP_DIR, "map_niveau1.png")
 LEVEL1_WALL_MASK = os.path.join(LEVEL1_MAP_DIR, "mur_map_niveau1.png")
 LEVEL1_WATER = os.path.join(LEVEL1_MAP_DIR, "eau_map_niveau1.png")
+LEVEL1_VOID = os.path.join(LEVEL1_MAP_DIR, "vide_map_niveau1.png")
 LEVEL1_PROPS = os.path.join(LEVEL1_MAP_DIR, "decors_map_niveau1.png")
 LEVEL1_DOOR = os.path.join(LEVEL1_MAP_DIR, "porte_map_niveau1.png")
 
@@ -81,6 +83,11 @@ class Level:
 
         self.walls = arcade.SpriteList()
 
+        # Lethal ground, read off the map masks: the water drowns the player
+        # and leaves a floating body, the void swallows the body with it.
+        self.water = arcade.SpriteList()
+        self.void = arcade.SpriteList()
+
         # Kept apart from walls: depending on their type corpses either block
         # the way or get picked up.
         self.corpses = arcade.SpriteList()
@@ -97,6 +104,7 @@ class Level:
 
         self._solid_obstacles_cache = []
         self._shot_obstacles_cache = []
+        self._rafts_cache = []
 
         self.setup()
 
@@ -160,21 +168,35 @@ class Level:
 
     def _load_level1_scenery(self, gap=None):
         """
-        Map1 layers, then the opaque pixels of the mask turned into walls.
-        `gap` (image coordinates) is ignored from the mask, which is how the
-        doorway gets punched through the top wall.
+        Map1 layers, then the opaque pixels of its masks turned into walls and
+        into lethal ground. `gap` (image coordinates) is ignored from the wall
+        mask, which is how the doorway gets punched through the top wall.
+
+        The water and void PNGs are both the artwork and the collision mask,
+        so repainting them is enough to move a hazard.
         """
         self.background.append(self._layer(LEVEL1_FLOOR))
         self.background.append(self._layer(LEVEL1_WATER))
+        self.background.append(self._layer(LEVEL1_VOID))
         self.background.append(self._layer(LEVEL1_PROPS))
 
-        mask = Image.open(LEVEL1_WALL_MASK).convert("RGBA")
+        self._mask_to_sprites(LEVEL1_WALL_MASK, self.walls, skip=gap)
+        self._mask_to_sprites(LEVEL1_WATER, self.water)
+        self._mask_to_sprites(LEVEL1_VOID, self.void)
+
+    def _mask_runs(self, path, skip=None):
+        """
+        Opaque pixels of a mask, as few image-space boxes as possible:
+        horizontal runs, stacked vertically while they keep the same span.
+        `skip` is a box ignored from the mask.
+        """
+        mask = Image.open(path).convert("RGBA")
         mask_width, mask_height = mask.size
         open_runs = {}
 
-        def is_wall(x, y):
-            if gap is not None:
-                x0, y0, x1, y1 = gap
+        def is_set(x, y):
+            if skip is not None:
+                x0, y0, x1, y1 = skip
                 if x0 <= x < x1 and y0 <= y < y1:
                     return False
             return mask.getpixel((x, y))[3] != 0
@@ -182,10 +204,10 @@ class Level:
         for y in range(mask_height):
             x = 0
             while x < mask_width:
-                while x < mask_width and not is_wall(x, y):
+                while x < mask_width and not is_set(x, y):
                     x += 1
                 start = x
-                while x < mask_width and is_wall(x, y):
+                while x < mask_width and is_set(x, y):
                     x += 1
                 if start == x:
                     continue
@@ -197,28 +219,29 @@ class Level:
                     run[3] = y + 1
                 else:
                     if run is not None:
-                        self._add_wall_rect(run)
+                        yield tuple(run)
                     open_runs[key] = [start, end, y, y + 1]
 
         for run in open_runs.values():
-            self._add_wall_rect(run)
+            yield tuple(run)
 
-    def _add_wall_rect(self, run):
-        """Invisible rectangle matching one opaque run of the mask."""
-        start_x, end_x, start_y, end_y = run
-        if end_y <= start_y:
-            return
+    def _mask_to_sprites(self, path, sprites, skip=None):
+        """Fills `sprites` with invisible rectangles covering a mask."""
+        for start_x, end_x, start_y, end_y in self._mask_runs(path, skip):
+            if end_y <= start_y:
+                continue
 
-        wall = arcade.SpriteSolidColor(
-            max(1, round(self.world_length(end_x - start_x))),
-            max(1, round(self.world_length(end_y - start_y))),
-            color=arcade.color.WHITE,
-        )
-        wall.center_x, wall.center_y = self.world_point(
-            (start_x + end_x) / 2, (start_y + end_y) / 2
-        )
-        wall.alpha = 0
-        self.walls.append(wall)
+            rect = arcade.SpriteSolidColor(
+                max(1, round(self.world_length(end_x - start_x))),
+                max(1, round(self.world_length(end_y - start_y))),
+                color=arcade.color.WHITE,
+            )
+            rect.center_x, rect.center_y = self.world_point(
+                (start_x + end_x) / 2, (start_y + end_y) / 2
+            )
+            rect.alpha = 0
+            sprites.append(rect)
+        return sprites
 
     def is_complete(self) -> bool:
         """
@@ -246,6 +269,8 @@ class Level:
         self._handle_player_attack()
         self._handle_bone_pickup()
         self._resolve_solid_collisions()
+        self._handle_hazard_collisions()
+        self._keep_enemies_off_hazards()
         self._handle_hole_collisions()
 
         margin = 60
@@ -273,9 +298,14 @@ class Level:
         walls = list(self.walls)
         self._solid_obstacles_cache = walls + [c for c in self.corpses if c.blocks_movement()]
         self._shot_obstacles_cache = walls + [c for c in self.corpses if c.blocks_projectile()]
+        self._rafts_cache = [c for c in self.corpses if c.bridges_hazard()]
 
     def solid_obstacles(self):
         return self._solid_obstacles_cache
+
+    def rafts(self):
+        """Bodies floating on the water, walkable for as long as they last."""
+        return self._rafts_cache
 
     def shot_obstacles(self):
         """Read by the turrets every frame for their line of sight."""
@@ -284,6 +314,8 @@ class Level:
     def add_enemy(self, enemy):
         """entities updates and draws it, enemies makes it collide."""
         self.scale_to_window(enemy)
+        # Last position clear of lethal ground; see _keep_enemies_off_hazards().
+        enemy.safe_point = (enemy.center_x, enemy.center_y)
         self.entities.append(enemy)
         self.enemies.append(enemy)
         return enemy
@@ -323,6 +355,58 @@ class Level:
             if corpse.is_pickable() and arcade.check_for_collision(self.player, corpse):
                 corpse.on_player_contact(self.player)
 
+    @staticmethod
+    def _standing_on(sprite, grounds):
+        """
+        The first of `grounds` the sprite's centre stands on.
+
+        Testing a single point, rather than asking the sprite to fit inside a
+        rectangle, is what makes this independent of how the mask got sliced:
+        a pool is cut into horizontal runs, and a 44 px body never fits inside
+        an 8 px run. Same convention as _handle_hole_collisions().
+        """
+        x, y = sprite.center_x, sprite.center_y
+        for ground in grounds:
+            if ground.left <= x <= ground.right and ground.bottom <= y <= ground.top:
+                return ground
+        return None
+
+    def _handle_hazard_collisions(self):
+        """
+        Water and void kill on contact, whatever resistance the player has
+        picked up. A body floating on the water cancels it, which is how a
+        pool gets bridged; the void keeps the body, so it can never be.
+        """
+        if self.player is None or not self.player.is_controllable:
+            return
+
+        if self._standing_on(self.player, self.water) is not None:
+            if self._standing_on(self.player, self.rafts()) is None:
+                self.player.take_hit(DeathCause.DROWNING, fatal=True)
+            return
+
+        if self._standing_on(self.player, self.void) is not None:
+            self.player.take_hit(DeathCause.VOID, fatal=True)
+
+    def _keep_enemies_off_hazards(self):
+        """
+        Enemies neither drown nor fall: they are sent back to where they last
+        stood on solid ground.
+
+        A point test and a rewind, not the _push_out() used for walls: lethal
+        ground is sliced into thin horizontal runs, and pushing along the
+        smallest overlap would slide an enemy sideways down a run instead of
+        stopping it at the shore.
+        """
+        for enemy in list(self.enemies):
+            if (self._standing_on(enemy, self.water) is not None
+                    or self._standing_on(enemy, self.void) is not None):
+                enemy.center_x, enemy.center_y = enemy.safe_point
+                enemy.change_x = 0
+                enemy.change_y = 0
+            else:
+                enemy.safe_point = (enemy.center_x, enemy.center_y)
+
     def _handle_hole_collisions(self):
         if self.player is None or not self.player.is_controllable:
             return
@@ -348,15 +432,22 @@ class Level:
             self.player.center_x, self.player.center_y = self.hole_exit(target)
 
     def _on_player_death(self, player):
-        """The cause of death decides the corpse type."""
+        """
+        The cause of death decides the corpse type, and whether there is a
+        body at all: the void keeps it.
+        """
         corpse = Corpse.from_death_cause(player.death_cause,
                                          player.center_x, player.center_y)
-        self.scale_to_window(corpse)
-        self.corpses.append(corpse)
-        self._refresh_obstacles()
 
         if self.on_death is not None:
             self.on_death()
+
+        if corpse is None:
+            return
+
+        self.scale_to_window(corpse)
+        self.corpses.append(corpse)
+        self._refresh_obstacles()
 
         # Dying right on an altar slot lays the body there.
         if self.altar is not None:
