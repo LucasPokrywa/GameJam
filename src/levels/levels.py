@@ -204,6 +204,19 @@ class Level:
         sprite.height = tile
         sprite.center_x = self.map_left + (column + 0.5) * tile
         sprite.center_y = self.map_bottom + (row + 0.5) * tile
+
+        # The default hit box hugs the opaque pixels, and the corpse art is
+        # drawn inside its frame, so left/right/bottom/top would cover half a
+        # tile. Built last: a fresh HitBox does not inherit position or scale.
+        texture = sprite.texture
+        if texture is not None:
+            half_w, half_h = texture.width / 2, texture.height / 2
+            sprite.hit_box = arcade.hitbox.HitBox(
+                ((-half_w, -half_h), (half_w, -half_h),
+                 (half_w, half_h), (-half_w, half_h)),
+                position=(sprite.center_x, sprite.center_y),
+                scale=(sprite.scale_x, sprite.scale_y),
+            )
         return sprite
 
     def world_rect(self, image_box):
@@ -438,10 +451,14 @@ class Level:
         rectangle, is what makes this independent of how the mask got sliced:
         a pool is cut into horizontal runs, and a 44 px body never fits inside
         an 8 px run. Same convention as _handle_hole_collisions().
+
+        Half-open on the top and right edges, to match the floor division in
+        snap_to_tile(): otherwise a body drowned on the top edge of a pool is
+        snapped onto the shore tile above and bridges nothing.
         """
         x, y = sprite.center_x, sprite.center_y
         for ground in grounds:
-            if ground.left <= x <= ground.right and ground.bottom <= y <= ground.top:
+            if ground.left <= x < ground.right and ground.bottom <= y < ground.top:
                 return ground
         return None
 
@@ -592,10 +609,11 @@ class Level:
 class Door(Entity):
     """
     Round exit, solid until the altar is filled. Invisible like the other
-    walls: `closed_layer` is what shows it, and drops with it.
+    walls: `closed_layer` is what shows it, and drops with it. Levels with no
+    door artwork pass none.
     """
 
-    def __init__(self, center_x, center_y, width, height, closed_layer):
+    def __init__(self, center_x, center_y, width, height, closed_layer=None):
         super().__init__(width=int(width), height=int(height),
                          center_x=center_x, center_y=center_y)
         self.acceleration = 0.0
@@ -610,7 +628,8 @@ class Door(Entity):
             return
         self.is_open = True
         self.remove_from_sprite_lists()
-        self.closed_layer.remove_from_sprite_lists()
+        if self.closed_layer is not None:
+            self.closed_layer.remove_from_sprite_lists()
 
 
 # Image-space placements, checked against the walls, the holes and the
@@ -798,7 +817,7 @@ class TurretDemoLevel(Level):
     """Minimal example of wiring a turret into a level."""
 
     def setup(self):
-        self._load_level1_scenery()
+        self._load_level_scenery(ListbackgroundLevel1, ListMasksLevel1, gap=DOOR_GAP)
         self.player = Player(center_x=self.window_width // 2, center_y=150)
         self.entities.append(self.player)
 
