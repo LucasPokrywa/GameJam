@@ -27,7 +27,7 @@ class CorpseState(Enum):
 # rather than silently falling back to some default corpse. None means the
 # body is lost and nothing is left behind.
 CAUSE_TO_TYPE = {
-    DeathCause.TOWER: CorpseType.BONES,
+    DeathCause.TOWER: CorpseType.WALL,
     DeathCause.ZOMBIE: CorpseType.BONES,
     DeathCause.DROWNING: CorpseType.RAFT,
     DeathCause.VOID: None,
