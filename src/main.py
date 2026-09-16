@@ -16,6 +16,11 @@ bon Level, lance le chrono, compte les morts et enchaîne sur l'écran suivant.
 from enum import Enum, auto
 
 import arcade
+import os
+try:
+    import pyglet
+except Exception:
+    pyglet = None
 
 import ui
 from round_manager import RoundManager, RoundState, creer_rounds_par_defaut
@@ -60,6 +65,11 @@ class MonJeu(arcade.Window):
         self.rm = RoundManager(creer_rounds_par_defaut())
         self.level = None
 
+        # Music player / background theme
+        self._music_player = None
+        self._music_sound = None
+        self._music_playing = False
+
         self.round_reussi = False   # mémorise l'issue du round pour l'écran de fin
         self.tuto_timer = 0.0
         self.pause_confirm_quit = False  # True quand la confirmation de quit est affichée
@@ -93,6 +103,7 @@ class MonJeu(arcade.Window):
         self.etat = EtatJeu.MENU
         self.level = None
         arcade.set_background_color(arcade.color.BLACK)
+        self._stop_music()
 
     def _demarrer_partie(self):
         """Repart d'une partie neuve : round 1, écran de tutoriel."""
@@ -109,11 +120,14 @@ class MonJeu(arcade.Window):
         arcade.set_background_color(self.level.background_color)
         self.rm.start_round()
         self.etat = EtatJeu.JEU
+        # Start background music for gameplay
+        self._start_music()
 
     def _terminer_round(self, reussi):
         """Bascule vers l'écran de fin de round (réussi ou échoué)."""
         self.round_reussi = reussi
         self.etat = EtatJeu.FIN_ROUND
+        self._stop_music()
 
     def _apres_fin_round(self):
         """Action déclenchée par [Entree] sur l'écran de fin de round."""
@@ -202,6 +216,7 @@ class MonJeu(arcade.Window):
             if key == arcade.key.ESCAPE:
                 self.pause_confirm_quit = False
                 self.etat = EtatJeu.PAUSE
+                self._stop_music()
             elif key == arcade.key.N:
                 # DEBUG (temporaire) : valide le round à la main tant que les
                 # vraies conditions is_complete() des niveaux n'existent pas.
@@ -220,9 +235,10 @@ class MonJeu(arcade.Window):
             else:
                 # Menu pause
                 if key == arcade.key.ESCAPE:
-                    self.etat = EtatJeu.JEU            # reprendre
+                    self.etat = EtatJeu.JEU
+                    self._start_music()
                 elif key == arcade.key.Q:
-                    self.pause_confirm_quit = True     # demander confirmation
+                    self.pause_confirm_quit = True
 
         elif self.etat == EtatJeu.FIN_ROUND:
             if key == arcade.key.ENTER:
@@ -237,6 +253,78 @@ class MonJeu(arcade.Window):
     def on_key_release(self, key, modifiers):
         if self.etat == EtatJeu.JEU:
             self.level.player.on_key_release(key)
+
+    # ------------------------------------------------------------------ #
+    # Music helpers
+    # ------------------------------------------------------------------ #
+    def _start_music(self):
+        if self._music_playing:
+            return
+        try:
+            projet_root = os.path.dirname(os.path.dirname(__file__))
+            specific = os.path.join(projet_root, "assets", "sounds", "maint-theme.mp3")
+            alt = os.path.join(projet_root, "assets", "sounds", "main-theme.mp3")
+            chosen = None
+            if os.path.exists(specific):
+                chosen = specific
+            elif os.path.exists(alt):
+                chosen = alt
+            if chosen is None:
+                return
+
+            # Try pyglet player for reliable looping
+            if pyglet is not None:
+                try:
+                    source = pyglet.media.load(chosen)
+                    player = pyglet.media.Player()
+                    player.queue(source)
+                    try:
+                        player.volume = 0.10
+                    except Exception:
+                        pass
+                    try:
+                        player.loop = True
+                    except Exception:
+                        try:
+                            player.eos_action = 'loop'
+                        except Exception:
+                            pass
+                    player.play()
+                    self._music_player = player
+                    self._music_playing = True
+                    return
+                except Exception:
+                    self._music_player = None
+
+            # Fallback to arcade sound (may not loop depending on arcade version)
+            try:
+                self._music_sound = arcade.load_sound(chosen)
+                try:
+                    arcade.play_sound(self._music_sound, volume=0.35, loop=True)
+                except TypeError:
+                    arcade.play_sound(self._music_sound, volume=0.35)
+                self._music_playing = True
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _stop_music(self):
+        try:
+            if getattr(self, "_music_player", None) is not None:
+                try:
+                    self._music_player.pause()
+                except Exception:
+                    pass
+                try:
+                    self._music_player.delete()
+                except Exception:
+                    pass
+                self._music_player = None
+            # No reliable stop for arcade.play_sound fallback; just clear flag.
+            self._music_playing = False
+        except Exception:
+            pass
 
 
 def main():

@@ -58,7 +58,7 @@ class Zombie(Enemy):
     damage_type = DeathCause.ZOMBIE
 
     def __init__(self, center_x=0, center_y=0, player=None,
-                 speed=115.0, detection_range=240.0, attack_cooldown=0.9,
+                 speed=80.0, detection_range=240.0, attack_cooldown=0.9,
                  hp=1, requires_weapon=False):
         super().__init__(
             hp=hp,
@@ -80,6 +80,7 @@ class Zombie(Enemy):
         self._time_since_attack = attack_cooldown
 
         self.color = TOUGH_ZOMBIE_COLOR if requires_weapon else ZOMBIE_COLOR
+
 
         try:
             projet_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -182,6 +183,7 @@ class Zombie(Enemy):
                 dir_name = "run_front"
             self.set_animation_direction(dir_name)
             self.set_animation_playing(True)
+            pass
         else:
             self.set_animation_playing(False)
 

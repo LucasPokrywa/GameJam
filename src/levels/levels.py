@@ -4,6 +4,17 @@ import random
 
 import arcade
 from PIL import Image
+import arcade
+import os
+
+try:
+    projet_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    SOUNDS_DIR = os.path.join(projet_root, "assets", "sounds")
+    BULLET_SHOT_SOUND = arcade.load_sound(os.path.join(SOUNDS_DIR, "bullet-shot.ogg"))
+    BULLET_HIT_SOUND = arcade.load_sound(os.path.join(SOUNDS_DIR, "bullet-hit.ogg"))
+except Exception:
+    BULLET_SHOT_SOUND = None
+    BULLET_HIT_SOUND = None
 
 from entities.altar import SacrificeAltar
 from entities.corpse import Corpse, CorpseType
@@ -286,6 +297,11 @@ class Level:
 
         for bullet in bullets:
             if any(arcade.check_for_collision(bullet, o) for o in obstacles):
+                try:
+                    if BULLET_HIT_SOUND is not None:
+                        arcade.play_sound(BULLET_HIT_SOUND, volume=2)
+                except Exception:
+                    pass
                 bullet.remove_from_sprite_lists()
                 continue
 
@@ -293,6 +309,11 @@ class Level:
                 continue
 
             if arcade.check_for_collision(bullet, self.player):
+                try:
+                    if BULLET_HIT_SOUND is not None:
+                        arcade.play_sound(BULLET_HIT_SOUND, volume=2)
+                except Exception:
+                    pass
                 self.player.take_hit(bullet)
                 bullet.remove_from_sprite_lists()
                 break   # one bullet is enough to land the hit
