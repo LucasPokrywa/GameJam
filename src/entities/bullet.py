@@ -1,35 +1,44 @@
-import arcade
+import math
+import os
+
+from entities.damage import DeathCause
 from entities.entities import Entity
+
+SPRITE = os.path.join(os.path.dirname(__file__), "..", "..",
+                      "assets", "entities", "tower", "bullet.png")
+FRAME_SIZE = 16
+FRAMES = 8
+ARROW_BOX = (0, 5, 15, 12)
+SCALE_FACTOR = 2
 
 
 class Bullet(Entity):
-    """
-    Projectile simple : part d'un point dans une direction donnée et
-    avance en ligne droite à vitesse constante, jusqu'à sortir de l'écran
-    (où Level la détruit automatiquement, voir clamp_to_bounds).
-    """
+    """Arrow fired by a turret: straight line, constant speed."""
 
-    def __init__(self, center_x, center_y, direction_x, direction_y,
-                 speed=400, width=12, height=12, color=arcade.color.YELLOW):
+    damage_type = DeathCause.TOWER
+
+    def __init__(self, center_x, center_y, direction_x, direction_y, speed=400):
         super().__init__(
-            width=width,
-            height=height,
-            color=color,
+            width=ARROW_BOX[2] - ARROW_BOX[0],
+            height=ARROW_BOX[3] - ARROW_BOX[1],
             center_x=center_x,
             center_y=center_y,
         )
-        # Pas de friction ni d'accélération : la balle garde une vitesse
-        # constante du début à la fin (contrairement au joueur qui a de
-        # l'inertie).
         self.acceleration = 0.0
         self.friction = 0.0
         self.max_speed = speed
 
-        # direction_x / direction_y doivent être un vecteur déjà normalisé
-        # (longueur 1) : c'est Turret qui s'occupe de ce calcul.
+        self.load_animation("arrow", SPRITE, FRAME_SIZE, FRAME_SIZE, FRAMES,
+                            crop_box=ARROW_BOX)
+        self.set_animation_direction("arrow")
+        self.scale = SCALE_FACTOR
+        self.frame_duration = 0.06
+
+        # direction_x / direction_y must already be normalised; Turret does it.
         self.change_x = direction_x * speed
         self.change_y = direction_y * speed
+        self.angle = -math.degrees(math.atan2(direction_y, direction_x))
 
-        # Une balle ne doit pas rester coincée sur un bord de l'écran comme
-        # le joueur : elle doit disparaître dès qu'elle en sort.
+        # Unlike the player, a bullet must leave the screen instead of
+        # sticking to its edge.
         self.clamp_to_bounds = False
