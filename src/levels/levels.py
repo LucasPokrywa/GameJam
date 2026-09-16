@@ -41,6 +41,16 @@ VASE_SHEET = os.path.join(DECOR_DIR, "vase.png")
 VASE_FRAMES = 16
 
 
+LEVEL5_MAP_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "assets", "images", "map5"
+)
+LEVEL5_FLOOR = os.path.join(LEVEL5_MAP_DIR, "sol.png")
+LEVEL5_WALL_MASK = os.path.join(LEVEL5_MAP_DIR, "murs.png")
+LEVEL5_DOOR = os.path.join(LEVEL5_MAP_DIR, "porte.png")
+
+ListbackgroundLevel5 = [LEVEL5_FLOOR, None, None, None]
+ListMasksLevel5 = [LEVEL5_WALL_MASK, None, None]
+
 LEVEL4_MAP_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", "assets", "images", "map4"
 )
@@ -1285,6 +1295,101 @@ class Level4(Level):
         for point in LEVEL4_TORCHES:
             self.add_decoration(*point)
         for point in LEVEL4_VASES:
+            self.add_decoration(*point, sheet=VASE_SHEET, frames=VASE_FRAMES)
+
+        self.round_complete = False
+        self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
+
+    def is_complete(self) -> bool:
+        return self.round_complete
+
+    def _open_door(self, altar):
+        self.door.open()
+
+    def update(self, delta_time: float):
+        super().update(delta_time)
+
+        if self.round_complete or not self.door.is_open:
+            return
+
+        if (self.player.center_y >= self.door.bottom
+                and self.door.left <= self.player.center_x <= self.door.right):
+            self.round_complete = True
+
+    def draw(self):
+        super().draw()
+        self._player_text.text = (
+            f"Morts : {self.player.death_count}    Os : {self.player.resistance_bonus}"
+        )
+        self._player_text.draw()
+
+
+# Coordonnees image (256x256, grille de 16 px) ; cf. le plan dans map5/sol.png.
+# Deux socles espaces de SLOT_SPACING (64 px monde = 27.3 px image) : centre a
+# x=198, le socle RADEAU tombe a 184, pile au centre de la tuile 11, celle ou
+# l'empale s'ecrase contre le mur du fond.
+LEVEL5_ALTAR = (198, 216)
+LEVEL5_SPAWN = (56, 216)       # tuile (3, 13), entree du serpentin
+LEVEL5_XBOWS = ((120, 56), (184, 56))   # haut des deux couloirs verticaux
+LEVEL5_ZOMBIES = ((56, 136), (120, 136), (200, 120))
+LEVEL5_TORCHES = ((72, 40), (184, 40), (56, 40))
+LEVEL5_VASES = ((40, 56), (216, 56), (168, 72))
+
+
+class Level5(Level):
+    """
+    Le final : un labyrinthe en serpentin, trois zombies lachés dedans, et deux
+    arbaletes qui en balaient les couloirs verticaux.
+
+    L'autel reclame un RADEAU et des OS. Aucune eau dans la salle : le radeau ne
+    peut donc venir que de l'empalement — `crash_into_wall()` couche le joueur
+    en radeau quand le pieu le jette contre un mur. L'arbalete du dernier
+    couloir tire vers le bas dans l'axe du socle du RADEAU : se faire embrocher
+    la, c'est justement s'y deposer. L'arme du couloir est l'outil du puzzle.
+
+    Les os viennent des zombies, a condition de mourir sur leur socle, a deux
+    pas du premier — tout se joue donc dans le dernier couloir, sous le tir.
+
+    Couloirs de trois tuiles et non deux : un zombie fait 64 px de large, le
+    joueur 24. A trois tuiles (112 px) on peut encore se glisser a cote, a deux
+    (75 px) le zombie bouche le couloir et le labyrinthe devient impassable.
+    """
+
+    def setup(self):
+        self._load_level_scenery(ListbackgroundLevel5, ListMasksLevel5,
+                                 gap=DOOR_GAP)
+
+        closed_layer = self._layer(LEVEL5_DOOR)
+        self.background.append(closed_layer)
+        self.door = Door(*self.world_rect(DOOR_PANEL), closed_layer)
+        self.walls.append(self.door)
+
+        self.player = Player(*self.world_point(*LEVEL5_SPAWN))
+        self.scale_to_window(self.player)
+        self.entities.append(self.player)
+
+        # L'ordre des cles fixe l'ordre des socles, de gauche a droite.
+        self.altar = SacrificeAltar(
+            *self.world_point(*LEVEL5_ALTAR),
+            required_sacrifices={CorpseType.RAFT: 1, CorpseType.BONES: 1},
+            on_unlock=self._open_door,
+            scale=self.sprite_scale,
+        )
+
+        for point in LEVEL5_XBOWS:
+            x, y = self.world_point(*point)
+            self.entities.append(self.scale_to_window(Xbow(
+                center_x=x, center_y=y, level=self, player=self.player,
+                fire_interval=2.2, bullet_speed=300, orientation="south",
+            )))
+
+        for point in LEVEL5_ZOMBIES:
+            self.add_enemy(Zombie(*self.world_point(*point),
+                                  player=self.player, detection_range=520.0))
+
+        for point in LEVEL5_TORCHES:
+            self.add_decoration(*point)
+        for point in LEVEL5_VASES:
             self.add_decoration(*point, sheet=VASE_SHEET, frames=VASE_FRAMES)
 
         self.round_complete = False
