@@ -1,4 +1,0 @@
-/home/lucas/Desktop/GameJam/.venv/lib/python3.14/site-packages/pyglet/media/codecs/__init__.py:152: UserWarning: FFmpeg release version not found. This may be a new or untested release. Unknown behavior may occur. Versions Loaded: {'avcodec': 63, 'avformat': 63, 'avutil': 61, 'swresample': 7, 'swscale': 10}
-  warnings.warn(f'FFmpeg release version not found. This may be a new or untested release. Unknown behavior may occur. Versions Loaded: {ffmpeg_lib.compat.versions}')
-/home/lucas/Desktop/GameJam/.venv/lib/python3.14/site-packages/arcade/exceptions.py:138: PerformanceWarning: draw_text is an extremely slow function for displaying text. Consider using Text objects instead.
-  warnings.warn(message, warning_type)
