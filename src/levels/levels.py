@@ -33,6 +33,7 @@ LEVEL1_PROPS = os.path.join(LEVEL1_MAP_DIR, "decors_map_niveau1.png")
 LEVEL1_DOOR = os.path.join(LEVEL1_MAP_DIR, "porte_map_niveau1.png")
 
 MAP_SIZE = 256   # the map1 PNGs are 256x256
+TILE_SIZE = 16   # the artwork is drawn on a 16 px grid, 16x16 tiles
 
 # Everything below is expressed in that 256x256 artwork space and converted
 # with world_point(), so the level follows the window instead of assuming the
@@ -165,6 +166,25 @@ class Level:
 
     def world_length(self, image_length) -> float:
         return image_length * self.map_scale
+
+    def snap_to_tile(self, sprite):
+        """
+        Centres the sprite on the map tile it stands on, and sizes it to fill
+        that tile exactly.
+
+        The size matters as much as the position: _standing_on() tests a
+        single point, so a body smaller than its tile would leave a seam of
+        unbridged water between two neighbours.
+        """
+        tile = self.world_length(TILE_SIZE)
+        column = int((sprite.center_x - self.map_left) // tile)
+        row = int((sprite.center_y - self.map_bottom) // tile)
+
+        sprite.width = tile
+        sprite.height = tile
+        sprite.center_x = self.map_left + (column + 0.5) * tile
+        sprite.center_y = self.map_bottom + (row + 0.5) * tile
+        return sprite
 
     def world_rect(self, image_box):
         """Turns a box of the 256x256 artwork into (center_x, center_y, w, h)."""
@@ -462,6 +482,12 @@ class Level:
             return
 
         self.scale_to_window(corpse)
+
+        # A floating body is a walkable tile of the pool, so it has to line up
+        # with the water it bridges rather than with where the player fell.
+        if corpse.bridges_hazard():
+            self.snap_to_tile(corpse)
+
         self.corpses.append(corpse)
         self._refresh_obstacles()
 
