@@ -719,6 +719,7 @@ class Level1(Level):
         self._player_text.draw()
 
 PUZZLE1_SPAWN = (128, 200)
+PUZZLE1_DOOR = (240, 136, 16, 16)
 
 class Puzzle1(Level):
     """
@@ -740,8 +741,14 @@ class Puzzle1(Level):
                                            arcade.color.WHITE, 12)
         self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
 
-        center_x, center_y, width, height = self.world_rect((256-24, (16*7)-8, 16, 16))
-        self.door = Door(center_x, center_y, width, height)
+        door_x, door_y, door_width, door_height = PUZZLE1_DOOR
+        center_x, center_y = self.world_point(door_x, door_y)
+        self.door = Door(
+            center_x,
+            center_y,
+            self.world_length(door_width),
+            self.world_length(door_height),
+        )
 
     
         x, y = self.world_point(14.5*16, 10.5*16)
