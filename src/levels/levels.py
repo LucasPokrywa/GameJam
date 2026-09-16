@@ -48,6 +48,12 @@ LEVEL1_HOLES = [
     (119, 119),
     (183, 167),
 ]
+LEVEL1_PAIRED_HOLE = {
+            0: 1,  # Trou 1 emmène au Trou 2
+            1: 0,  # Trou 2 emmène au Trou 1
+            2: 3,  # Trou 3 emmène au Trou 4
+            3: 2,  # Trou 4 emmène au Trou 3
+}
 HOLE_HALF = 7          # image px
 HOLE_EXIT_GAP = 3      # image px below the hole, clear of its trigger box
 
@@ -325,7 +331,7 @@ class Level:
             if abs(px - x) <= half and abs(py - y) <= half:
                 self.teleport_out_of_hole(index)
                 return
-
+    
     def hole_exit(self, index):
         """Just below a hole, clear of its trigger box."""
         x, y = self.holes[index]
@@ -335,14 +341,9 @@ class Level:
 
     def teleport_out_of_hole(self, entered_index):
         """Drops the player below another hole, never the one just entered."""
-        if len(self.holes) < 2:
-            return
-
-        target = entered_index
-        while target == entered_index:
-            target = random.randrange(len(self.holes))
-
-        self.player.center_x, self.player.center_y = self.hole_exit(target)
+        if entered_index in LEVEL1_PAIRED_HOLE:
+            target = LEVEL1_PAIRED_HOLE[entered_index]
+            self.player.center_x, self.player.center_y = self.hole_exit(target)
 
     def _on_player_death(self, player):
         """The cause of death decides the corpse type."""
