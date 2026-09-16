@@ -70,6 +70,10 @@ DOOR_PANEL = (112, 32, 144, 47)   # stone panel of the door layer
 
 BACKGROUND_COLOR = (0x19, 0x14, 0x26)   # same dark as the maps' border
 
+BURNABLE_GREEN = (70, 190, 80)
+BURNABLE_ORANGE = (255, 135, 35)
+BURNABLE_BLACK = (10, 10, 10)
+
 # Holes painted into the map1 floor, measured on the artwork: each is a
 # 14x14 image-space square. Walking into one drops the player next to
 # another, picked at random.
@@ -118,6 +122,7 @@ class Level:
         # Kept apart from walls: depending on their type corpses either block
         # the way or get picked up.
         self.corpses = arcade.SpriteList()
+        self.burnable_obstacles = arcade.SpriteList()
 
         # Also held in self.entities; see add_enemy().
         self.enemies = arcade.SpriteList()
@@ -335,6 +340,7 @@ class Level:
             entity.update(delta_time)
 
         self._handle_bullet_collisions()
+        self._handle_burnable_obstacle_collisions()
         self._handle_player_attack()
         self._handle_bone_pickup()
         self._resolve_solid_collisions()
@@ -365,8 +371,9 @@ class Level:
 
     def _refresh_obstacles(self):
         walls = list(self.walls)
-        self._solid_obstacles_cache = walls + [c for c in self.corpses if c.blocks_movement()]
-        self._shot_obstacles_cache = walls + [c for c in self.corpses if c.blocks_projectile()]
+        burnable = [o for o in self.burnable_obstacles if o.blocks_movement()]
+        self._solid_obstacles_cache = walls + burnable + [c for c in self.corpses if c.blocks_movement()]
+        self._shot_obstacles_cache = walls + burnable + [c for c in self.corpses if c.blocks_projectile()]
         self._rafts_cache = [c for c in self.corpses if c.bridges_hazard()]
 
     def solid_obstacles(self):
@@ -395,11 +402,6 @@ class Level:
 
         for bullet in bullets:
             if any(arcade.check_for_collision(bullet, o) for o in obstacles):
-                try:
-                    if BULLET_HIT_SOUND is not None:
-                        arcade.play_sound(BULLET_HIT_SOUND, volume=2)
-                except Exception:
-                    pass
                 bullet.remove_from_sprite_lists()
                 continue
 
@@ -407,12 +409,7 @@ class Level:
                 continue
 
             if arcade.check_for_collision(bullet, self.player):
-                try:
-                    if BULLET_HIT_SOUND is not None:
-                        arcade.play_sound(BULLET_HIT_SOUND, volume=2)
-                except Exception:
-                    pass
-                self.player.take_hit(bullet)
+                self.player.ignite()
                 bullet.remove_from_sprite_lists()
                 break   # one bullet is enough to land the hit
 
@@ -428,6 +425,15 @@ class Level:
             if self.player is not None and self.player.is_vulnerable \
                     and arcade.check_for_collision(stake, self.player):
                 self.player.impale_with_stake(stake)
+
+    def _handle_burnable_obstacle_collisions(self):
+        if self.player is None or not self.player.is_burning:
+            return
+
+        for obstacle in self.burnable_obstacles:
+            if (obstacle.blocks_movement()
+                    and arcade.check_for_collision(self.player, obstacle)):
+                obstacle.start_burning()
 
     def _handle_player_attack(self):
         if self.player is None or not self.player.attack_active:
@@ -637,6 +643,62 @@ class Door(Entity):
             self.closed_layer.remove_from_sprite_lists()
 
 
+class BurnableObstacle(Entity):
+    """A solid green block that burns away when touched by a burning player."""
+
+    GREEN_DURATION = 0.35
+    ORANGE_DURATION = 0.35
+    FADE_DURATION = 0.8
+
+    def __init__(self, center_x, center_y, width, height):
+        super().__init__(width=int(width), height=int(height),
+                         color=BURNABLE_GREEN, center_x=center_x,
+                         center_y=center_y)
+        self.phase = "green"
+        self.phase_timer = 0.0
+        self.is_destroyed = False
+        self.alpha = 255
+
+    def blocks_movement(self) -> bool:
+        return not self.is_destroyed
+
+    def start_burning(self):
+        if self.phase != "green":
+            return
+        self.phase = "orange"
+        self.phase_timer = 0.0
+
+    @staticmethod
+    def _lerp_color(start, end, progress):
+        return tuple(round(a + (b - a) * progress)
+                     for a, b in zip(start, end))
+
+    def update(self, delta_time: float):
+        if self.is_destroyed:
+            return
+
+        self.phase_timer += delta_time
+        if self.phase == "green":
+            self.color = BURNABLE_GREEN
+        elif self.phase == "orange":
+            progress = min(1.0, self.phase_timer / self.ORANGE_DURATION)
+            self.color = self._lerp_color(BURNABLE_GREEN, BURNABLE_ORANGE,
+                                          progress)
+            if self.phase_timer >= self.ORANGE_DURATION:
+                self.phase = "black"
+                self.phase_timer = 0.0
+        elif self.phase == "black":
+            progress = min(1.0, self.phase_timer / self.FADE_DURATION)
+            self.color = self._lerp_color(BURNABLE_ORANGE, BURNABLE_BLACK,
+                                          progress)
+            self.alpha = round(255 * (1.0 - progress))
+            if self.phase_timer >= self.FADE_DURATION:
+                self.is_destroyed = True
+                self.remove_from_sprite_lists()
+
+        self.update_animation_frame(delta_time)
+
+
 # Image-space placements, checked against the walls, the holes and the
 # water; see tests/test_level1.py.
 LEVEL1_SPAWN = (128, 200)
@@ -725,6 +787,8 @@ class Level1(Level):
 
 PUZZLE1_SPAWN = (128, 200)
 PUZZLE1_DOOR = (240, 136, 16, 16)
+PUZZLE1_BURNABLE = (128, 48, 16, 96)
+PUZZLE1_TURRETS = ((92, 86),)
 
 class Puzzle1(Level):
     """
@@ -746,6 +810,15 @@ class Puzzle1(Level):
                                            arcade.color.WHITE, 12)
         self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
 
+        obstacle_x, obstacle_y, obstacle_width, obstacle_height = PUZZLE1_BURNABLE
+        obstacle = BurnableObstacle(
+            *self.world_point(obstacle_x, obstacle_y),
+            self.world_length(obstacle_width),
+            self.world_length(obstacle_height),
+        )
+        self.burnable_obstacles.append(obstacle)
+        self.entities.append(obstacle)
+
         door_x, door_y, door_width, door_height = PUZZLE1_DOOR
         center_x, center_y = self.world_point(door_x, door_y)
         self.door = Door(
@@ -762,6 +835,14 @@ class Puzzle1(Level):
         level=self, player=self.player,
         fire_interval=1.4, bullet_speed=330, orientation="west"
         )))
+
+        for point in PUZZLE1_TURRETS:
+            x, y = self.world_point(*point)
+            self.entities.append(self.scale_to_window(Turret(
+                center_x=x, center_y=y,
+                level=self, player=self.player,
+                fire_interval=1.4, bullet_speed=330,
+            )))
 
     def is_complete(self) -> bool:
         return self.round_complete
