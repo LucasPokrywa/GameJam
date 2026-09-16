@@ -1,19 +1,16 @@
 import math
 import os
-import random
 
 import arcade
 from PIL import Image
-import arcade
-import os
 
 try:
-    projet_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    SOUNDS_DIR = os.path.join(projet_root, "assets", "sounds")
-    BULLET_SHOT_SOUND = arcade.load_sound(os.path.join(SOUNDS_DIR, "bullet-shot.ogg"))
-    BULLET_HIT_SOUND = arcade.load_sound(os.path.join(SOUNDS_DIR, "bullet-hit.ogg"))
+    _SOUNDS_DIR = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        "assets", "sounds",
+    )
+    BULLET_HIT_SOUND = arcade.load_sound(os.path.join(_SOUNDS_DIR, "bullet-hit.ogg"))
 except Exception:
-    BULLET_SHOT_SOUND = None
     BULLET_HIT_SOUND = None
 
 from entities.altar import SacrificeAltar
