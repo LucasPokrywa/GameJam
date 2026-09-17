@@ -90,10 +90,10 @@ class Player(Entity):
         self._load_animations()
 
         # Arcade recomputes width/height on every frame change, so `scale` is
-        # what must be set, not width/height.
-        self.base_scale = PLAYER_HEIGHT / (CHARACTER_BOX[3] - CHARACTER_BOX[1])
-        self.scale = self.base_scale
-        self._force_base_scale()
+        # what must be set, not width/height. Keep a fixed reference scale for
+        # all death/respawn transitions so the drowning shrink effect never
+        # rewrites the player’s true normal size.
+        self._reset_base_scale()
 
         self.set_animation_direction("run_down")
         self.set_animation_playing(True)
@@ -245,7 +245,7 @@ class Player(Entity):
         """End of the dying phase: on_death lets the level drop the corpse."""
         self.death_count += 1
         self.is_armed = False
-        self._force_base_scale()
+        self._reset_base_scale()
         self.alpha = 255
         self._death_start_scale = self.base_scale
         if not KEEP_RESISTANCE_ON_DEATH:
@@ -275,7 +275,7 @@ class Player(Entity):
         self.death_cause = DeathCause.NONE
         self.state = PlayerState.ALIVE
         self.was_impaled = False
-        self._force_base_scale()
+        self._reset_base_scale()
         self._death_start_scale = self.base_scale
         self.fire_particles.clear()
         self._invulnerability_timer = INVULNERABILITY_DURATION
@@ -285,6 +285,11 @@ class Player(Entity):
         """Bones are both armour and weapon, as in the pitch."""
         self.resistance_bonus += 1
         self.is_armed = True
+
+    def _reset_base_scale(self):
+        self.base_scale = PLAYER_HEIGHT / (CHARACTER_BOX[3] - CHARACTER_BOX[1])
+        self.scale = self.base_scale
+        self._death_start_scale = self.base_scale
 
     def _force_base_scale(self):
         self.scale = self.base_scale
@@ -299,6 +304,10 @@ class Player(Entity):
         """Small leap used when bridging across a floating corpse."""
         self.change_x = 0
         self.change_y = 0
+        self.moving_up = False
+        self.moving_down = False
+        self.moving_left = False
+        self.moving_right = False
         self.raft_jump_start = (self.center_x, self.center_y)
         self.raft_jump_target = (target_x, target_y)
         self.raft_jump_timer = 0.0
@@ -517,11 +526,12 @@ class Player(Entity):
             self.take_hit(DeathCause.TOWER, fatal=True)
 
     def _update_alive(self, delta_time: float):
+        if self.raft_jump_target is not None:
+            self._update_raft_jump(delta_time)
+            self.alpha = 255 if self._invulnerability_timer <= 0.0 else 140
+            return
+
         if self.on_raft is not None:
-            if self.raft_jump_target is not None:
-                self._update_raft_jump(delta_time)
-                self.alpha = 255 if self._invulnerability_timer <= 0.0 else 140
-                return
 
             has_move_input = (self.moving_up or self.moving_down
                               or self.moving_left or self.moving_right)
