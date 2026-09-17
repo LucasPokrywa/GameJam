@@ -1,7 +1,9 @@
 import os
+import random
 from enum import Enum
 
 import arcade
+import pyglet
 from entities.damage import DeathCause, cause_from_source
 from entities.entities import Entity
 
@@ -88,9 +90,10 @@ class Player(Entity):
         self._load_animations()
 
         # Arcade recomputes width/height on every frame change, so `scale` is
-        # what must be set, not width/height.
-        self.base_scale = PLAYER_HEIGHT / (CHARACTER_BOX[3] - CHARACTER_BOX[1])
-        self.scale = self.base_scale
+        # what must be set, not width/height. Keep a fixed reference scale for
+        # all death/respawn transitions so the drowning shrink effect never
+        # rewrites the player’s true normal size.
+        self._reset_base_scale()
 
         self.set_animation_direction("run_down")
         self.set_animation_playing(True)
@@ -157,6 +160,8 @@ class Player(Entity):
             self._footstep_sound = None
 
         self._footstep_timer = 0.0
+        self.fire_particles = []
+        self._fire_particle_timer = 0.0
 
     @property
     def is_controllable(self) -> bool:
@@ -240,7 +245,7 @@ class Player(Entity):
         """End of the dying phase: on_death lets the level drop the corpse."""
         self.death_count += 1
         self.is_armed = False
-        self.scale = self.base_scale
+        self._reset_base_scale()
         self.alpha = 255
         self._death_start_scale = self.base_scale
         if not KEEP_RESISTANCE_ON_DEATH:
@@ -270,8 +275,9 @@ class Player(Entity):
         self.death_cause = DeathCause.NONE
         self.state = PlayerState.ALIVE
         self.was_impaled = False
-        self._force_base_scale()
+        self._reset_base_scale()
         self._death_start_scale = self.base_scale
+        self.fire_particles.clear()
         self._invulnerability_timer = INVULNERABILITY_DURATION
         self.set_animation_playing(True)
 
@@ -279,6 +285,11 @@ class Player(Entity):
         """Bones are both armour and weapon, as in the pitch."""
         self.resistance_bonus += 1
         self.is_armed = True
+
+    def _reset_base_scale(self):
+        self.base_scale = PLAYER_HEIGHT / (CHARACTER_BOX[3] - CHARACTER_BOX[1])
+        self.scale = self.base_scale
+        self._death_start_scale = self.base_scale
 
     def _force_base_scale(self):
         self.scale = self.base_scale
@@ -293,6 +304,10 @@ class Player(Entity):
         """Small leap used when bridging across a floating corpse."""
         self.change_x = 0
         self.change_y = 0
+        self.moving_up = False
+        self.moving_down = False
+        self.moving_left = False
+        self.moving_right = False
         self.raft_jump_start = (self.center_x, self.center_y)
         self.raft_jump_target = (target_x, target_y)
         self.raft_jump_timer = 0.0
@@ -442,9 +457,64 @@ class Player(Entity):
     def _update_staked(self, delta_time: float):
         super().update(delta_time)
 
+    def _spawn_fire_particles(self):
+        if not self.is_burning:
+            return
+
+        count = random.randint(2, 4)
+        for _ in range(count):
+            size = random.uniform(4.0, 8.0)
+            life = random.uniform(0.25, 0.7)
+            self.fire_particles.append({
+                "x": self.center_x + random.uniform(-10.0, 10.0),
+                "y": self.center_y + random.uniform(-4.0, 12.0),
+                "vx": random.uniform(-30.0, 30.0),
+                "vy": random.uniform(35.0, 95.0),
+                "size": size,
+                "life": life,
+                "max_life": life,
+                "color": (255, 120, 30),
+            })
+
+    def _update_fire_particles(self, delta_time: float):
+        self._fire_particle_timer -= delta_time
+        if self._fire_particle_timer <= 0.0:
+            self._fire_particle_timer = random.uniform(0.02, 0.08)
+            self._spawn_fire_particles()
+
+        for particle in list(self.fire_particles):
+            particle["x"] += particle["vx"] * delta_time
+            particle["y"] += particle["vy"] * delta_time
+            particle["vx"] *= 0.98
+            particle["vy"] *= 0.94
+            particle["vy"] -= 18.0 * delta_time
+            particle["life"] -= delta_time
+
+            if particle["life"] <= 0.0:
+                self.fire_particles.remove(particle)
+
+    def _draw_fire_particles(self):
+        for particle in self.fire_particles:
+            opacity = max(0, min(255, int(255 * (particle["life"] / particle["max_life"])) ))
+            size = particle["size"]
+            rect = pyglet.shapes.Rectangle(
+                x=particle["x"] - size / 2,
+                y=particle["y"] - size / 2,
+                width=size,
+                height=size,
+                color=(255, 120, 30),
+            )
+            rect.opacity = opacity
+            rect.draw()
+
+    def draw(self):
+        super().draw()
+        self._draw_fire_particles()
+
     def _update_burning(self, delta_time: float):
         self._burn_timer -= delta_time
         self._burn_blink_timer += delta_time
+        self._update_fire_particles(delta_time)
         if self._burn_blink_timer >= BURN_BLINK_INTERVAL:
             self._burn_blink_timer = 0.0
             self.alpha = 255 if self.alpha != 255 else 70
@@ -452,14 +522,16 @@ class Player(Entity):
         if self._burn_timer <= 0.0:
             self.is_burning = False
             self.alpha = 255
+            self.fire_particles.clear()
             self.take_hit(DeathCause.TOWER, fatal=True)
 
     def _update_alive(self, delta_time: float):
+        if self.raft_jump_target is not None:
+            self._update_raft_jump(delta_time)
+            self.alpha = 255 if self._invulnerability_timer <= 0.0 else 140
+            return
+
         if self.on_raft is not None:
-            if self.raft_jump_target is not None:
-                self._update_raft_jump(delta_time)
-                self.alpha = 255 if self._invulnerability_timer <= 0.0 else 140
-                return
 
             has_move_input = (self.moving_up or self.moving_down
                               or self.moving_left or self.moving_right)
