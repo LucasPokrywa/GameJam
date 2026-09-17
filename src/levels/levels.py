@@ -709,6 +709,9 @@ class Level:
         self.decorations.draw(pixelated=True)
         self.corpses.draw(pixelated=True)
         self.entities.draw(pixelated=True)
+        for entity in self.entities:
+            if hasattr(entity, "_draw_fire_particles"):
+                entity._draw_fire_particles()
 
 
 class Door(Entity):
