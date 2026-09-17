@@ -229,7 +229,11 @@ class Level:
         base = current[0] if hasattr(current, "__getitem__") else current
         # Rounded: a fractional scale spreads one art pixel over 3 screen
         # pixels here and 4 there, which reads as blur on pixel art.
-        sprite.scale = max(1, round(base * factor))
+        new_scale = max(1, round(base * factor))
+        sprite.scale = new_scale
+
+        if hasattr(sprite, "base_scale"):
+            sprite.base_scale = new_scale
 
         if not speeds:
             return sprite
@@ -552,13 +556,23 @@ class Level:
         if self.player is None or not self.player.is_controllable:
             return
 
+        raft = self._standing_on(self.player, self.rafts())
+        if raft is None:
+            self.player.on_raft = None
+            self.player.raft_jump_target = None
+            self.player.raft_jump_start = None
+            self.player.raft_jump_timer = 0.0
+            self.player.scale = self.player.base_scale
+        else:
+            self.player.on_raft = raft
+
         if self._standing_on(self.player, self.water) is not None:
-            if self._standing_on(self.player, self.rafts()) is None:
+            if raft is None:
                 self.player.take_hit(DeathCause.DROWNING, fatal=True)
             return
 
         if self._standing_on(self.player, self.void) is not None:
-            if self._standing_on(self.player, self.rafts()) is None:
+            if raft is None:
                 self.player.take_hit(DeathCause.VOID, fatal=True)
             return
 
@@ -611,7 +625,8 @@ class Level:
         body at all: the void keeps it.
         """
         corpse = Corpse.from_death_cause(player.death_cause,
-                                         player.center_x, player.center_y)
+                                         player.center_x, player.center_y,
+                                         was_impaled=player.was_impaled)
 
         if self.on_death is not None:
             self.on_death()
@@ -655,6 +670,20 @@ class Level:
         """Pushes the sprite out along the axis of smallest overlap."""
         touched = False
 
+        if (getattr(sprite, "on_raft", None) is not None
+                and getattr(sprite, "raft_jump_target", None) is not None):
+            for obstacle in obstacles:
+                if obstacle is sprite or not arcade.check_for_collision(sprite, obstacle):
+                    continue
+                sprite.center_x, sprite.center_y = sprite.on_raft.center_x, sprite.on_raft.center_y
+                sprite.change_x = 0
+                sprite.change_y = 0
+                sprite.raft_jump_target = None
+                sprite.raft_jump_start = None
+                sprite.raft_jump_timer = 0.0
+                sprite.scale = sprite.base_scale
+                return True
+
         for obstacle in obstacles:
             if obstacle is sprite or not arcade.check_for_collision(sprite, obstacle):
                 continue
@@ -686,6 +715,9 @@ class Level:
         self.decorations.draw(pixelated=True)
         self.corpses.draw(pixelated=True)
         self.entities.draw(pixelated=True)
+        for entity in self.entities:
+            if hasattr(entity, "_draw_fire_particles"):
+                entity._draw_fire_particles()
 
 
 class Door(Entity):
