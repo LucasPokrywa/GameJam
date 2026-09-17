@@ -22,7 +22,7 @@ from enum import Enum, auto
 
 
 DUREE_ROUND_PAR_DEFAUT = 60.0  # secondes max par round (voir pitch : 5 rounds de 60 s)
-NB_ROUNDS = 5
+NB_ROUNDS = 6
 
 
 class RoundState(Enum):
@@ -243,6 +243,7 @@ def creer_rounds_par_defaut() -> list:
         "Récupère les os d'un squelette tombé.",
         "Traverse la salle sans te faire toucher.",
         "Survis et atteins la sortie finale.",
+        "Appuie sur le bouton pour ouvrir la porte.",
     ]
     return [
         RoundConfig(numero=i + 1, consigne=consignes[i])

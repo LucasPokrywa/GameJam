@@ -7,6 +7,7 @@ from PIL import Image
 
 from entities.xbow import Xbow
 from entities.altar import SacrificeAltar
+from entities.button import Button
 from entities.corpse import Corpse, CorpseType
 from entities.bullet import Bullet
 from entities.damage import DeathCause
@@ -103,6 +104,18 @@ PUZZLE1_VOID = os.path.join(PUZZLE1_MAP_DIR, "Void.png")
 ListbackgroundPuzzle1 = [PUZZLE1_FLOOR, PUZZLE1_WATER, PUZZLE1_VOID, None]
 ListMasksPuzzle1 = [PUZZLE1_WALL_MASK, PUZZLE1_WATER, PUZZLE1_VOID]
 
+BUTTONMAP_MAP_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "assets", "images", "buttonmap"
+)
+BUTTONMAP_FLOOR = os.path.join(BUTTONMAP_MAP_DIR, "buttonfloor.png")
+BUTTONMAP_WALL_MASK = os.path.join(BUTTONMAP_MAP_DIR, "buttonwalls.png")
+BUTTONMAP_VOID = os.path.join(BUTTONMAP_MAP_DIR, "buttonvoid.png")
+BUTTONMAP_DOOR = os.path.join(BUTTONMAP_MAP_DIR, "buttondoor.png")
+BUTTONMAP_BG = os.path.join(BUTTONMAP_MAP_DIR, "fond.png")
+
+ListbackgroundButtonMap = [BUTTONMAP_FLOOR, None, BUTTONMAP_VOID, BUTTONMAP_BG]
+ListMasksButtonMap = [BUTTONMAP_WALL_MASK, None, BUTTONMAP_VOID]
+
 MAP_SIZE = 256   # the map1 PNGs are 256x256
 TILE_SIZE = 16   # the artwork is drawn on a 16 px grid, 16x16 tiles
 
@@ -189,6 +202,7 @@ class Level:
 
         self.player = None
         self.altar = None
+        self.button = None
         self.holes = []      # world coordinates, filled from image space
         self.on_death = None   # wired by main.py to RoundManager.register_death
 
@@ -412,6 +426,10 @@ class Level:
         self._handle_hazard_collisions()
         self._keep_enemies_off_hazards()
         self._handle_hole_collisions()
+
+        if self.button is not None:
+            self.button.activators = [self.player, *list(self.enemies)]
+            self.button.update(delta_time)
 
         margin = 60
         for entity in list(self.entities):
@@ -745,6 +763,15 @@ class Door(Entity):
         if self.closed_layer is not None:
             self.closed_layer.remove_from_sprite_lists()
 
+    def close(self):
+        if not self.is_open:
+            return
+        self.is_open = False
+        if self.closed_layer is not None and self.closed_layer not in self.background:
+            self.background.append(self.closed_layer)
+        if self not in self.walls:
+            self.walls.append(self)
+
 
 class BurnableObstacle(Entity):
     """A solid green hedge that burns away when touched by a burning player."""
@@ -920,7 +947,7 @@ class Level1(Level):
 
 PUZZLE1_SPAWN = (128, 200)
 PUZZLE1_DOOR = (240, 136, 16, 16)
-PUZZLE1_BURNABLE = (128, 48, 16, 96)
+PUZZLE1_BURNABLE = (128, 56, 16, 80)
 PUZZLE1_TURRETS = ((92, 86),)
 # Torches sur les murets du milieu et sur le mur du haut. Rien d'autre n'est
 # pose la-haut : une niche sombre s'y lit comme une porte et le joueur croit
@@ -1074,6 +1101,93 @@ LEVEL3_TORCHES = ((104, 40), (184, 40))
 # Adosses a un mur ou a une masse : une poterie au milieu d'une salle se lit
 # comme tombee la.
 LEVEL3_VASES = ((88, 72), (88, 152), (216, 120), (184, 216))
+
+
+# Coordonnees image du niveau bouton.
+BUTTON_SPAWN = (120, 200)
+BUTTON_PRESS = (88, 72)
+BUTTON_ZOMBIE = (232, 192)
+BUTTON_DOOR = (240, 136, 16, 16)
+BUTTON_TURRET = (184, 72)
+BUTTON_HEDGE = (192, 208, 16, 64)
+
+
+
+class ButtonMapLevel(Level):
+    """A button on the floor opens the door when a zombie stands on it."""
+
+    def setup(self):
+        self._load_level_scenery(ListbackgroundButtonMap, ListMasksButtonMap,
+                                 gap=DOOR_GAP)
+
+        closed_layer = self._layer(BUTTONMAP_DOOR)
+        self.background.append(closed_layer)
+        self.door = Door(*self.world_rect(DOOR_PANEL), closed_layer)
+        self.walls.append(self.door)
+
+        self.player = Player(*self.world_point(*BUTTON_SPAWN))
+        self.scale_to_window(self.player)
+        self.entities.append(self.player)
+
+        obstacle_x, obstacle_y, obstacle_width, obstacle_height = BUTTON_HEDGE
+        obstacle = BurnableObstacle(
+            *self.world_point(obstacle_x, obstacle_y),
+            self.world_length(obstacle_width),
+            self.world_length(obstacle_height),
+            art_size=(obstacle_width, obstacle_height),
+        )
+        self.burnable_obstacles.append(obstacle)
+        self.entities.append(obstacle)
+
+        button_x, button_y = self.world_point(*BUTTON_PRESS)
+        self.button = Button(
+            center_x=button_x,
+            center_y=button_y,
+            width=32,
+            height=32,
+            on_press=self._open_door,
+            on_release=self._close_door,
+            allow_player=True,
+        )
+        self.scale_to_window(self.button)
+        self.decorations.append(self.button)
+
+        self.add_enemy(Zombie(*self.world_point(*BUTTON_ZOMBIE), player=self.player,
+                              detection_range=320.0))
+        x, y = self.world_point(*BUTTON_TURRET)
+        self.entities.append(self.scale_to_window(Turret(
+            center_x=x, center_y=y, level=self, player=self.player,
+            fire_interval=1.4, bullet_speed=330,
+        )))
+        
+        self.round_complete = False
+        self._player_text = arcade.Text("", 12, 12, arcade.color.LIGHT_GRAY, 12)
+
+    def is_complete(self) -> bool:
+        return self.round_complete
+
+    def _open_door(self, source=None):
+        self.door.open()
+
+    def _close_door(self, source=None):
+        self.door.close()
+
+    def update(self, delta_time: float):
+        super().update(delta_time)
+
+        if self.round_complete or not self.door.is_open:
+            return
+
+        if (self.player.center_y >= self.door.bottom
+                and self.door.left <= self.player.center_x <= self.door.right):
+            self.round_complete = True
+
+    def draw(self):
+        super().draw()
+        self._player_text.text = (
+            f"Morts : {self.player.death_count}    Os : {self.player.resistance_bonus}"
+        )
+        self._player_text.draw()
 
 
 class Level3(Level):

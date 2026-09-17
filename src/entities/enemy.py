@@ -10,8 +10,11 @@ ZOMBIE_COLOR = (95, 145, 75)
 TOUGH_ZOMBIE_COLOR = (60, 105, 60)
 ATTACKING_ZOMBIE_COLOR = (170, 200, 90)
 
+# Keep the sprite render at the original visual size, but reduce the body used
+# for physics so the zombie can fit through a one-tile corridor.
 ZOMBIE_SIZE = 32
-HITBOX_SCALE = 0.7
+PHYSICAL_SIZE = 16
+HITBOX_SCALE = 0.9
 
 
 class Enemy(Entity):
@@ -63,8 +66,8 @@ class Zombie(Enemy):
         super().__init__(
             hp=hp,
             requires_weapon=requires_weapon,
-            width=ZOMBIE_SIZE,
-            height=ZOMBIE_SIZE,
+            width=PHYSICAL_SIZE,
+            height=PHYSICAL_SIZE,
             center_x=center_x,
             center_y=center_y,
         )
@@ -99,7 +102,7 @@ class Zombie(Enemy):
                         self.load_animation(name, chemin_sprite, frame_width, frame_height, frame_count, row=row_idx)
                     self.set_animation_direction("run_front")
                     self.scale = (ZOMBIE_SIZE / frame_width) * 2.0
-                    half = (ZOMBIE_SIZE * HITBOX_SCALE) / 2.0
+                    half = (PHYSICAL_SIZE * HITBOX_SCALE) / 2.0
                     try:
                         self.set_hit_box([(-half, -half), (half, -half), (half, half), (-half, half)])
                     except Exception:
@@ -109,7 +112,7 @@ class Zombie(Enemy):
                     self.texture = tex
                     if tex.width:
                         self.scale = ZOMBIE_SIZE / tex.width
-                    half = (ZOMBIE_SIZE * HITBOX_SCALE) / 2.0
+                    half = (PHYSICAL_SIZE * HITBOX_SCALE) / 2.0
                     try:
                         self.set_hit_box([(-half, -half), (half, -half), (half, half), (-half, half)])
                     except Exception:
