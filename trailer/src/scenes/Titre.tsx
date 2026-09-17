@@ -128,10 +128,14 @@ export const Titre: React.FC = () => {
           left: 0,
           right: 0,
           bottom: 92,
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          rowGap: 14,
+          padding: "0 110px",
           textAlign: "center",
           fontFamily,
           fontSize: 24,
-          lineHeight: 2,
+          lineHeight: 1.25,
           color: "#8E8578",
           opacity: interpolate(frame, [86, 100], [0, 1], {
             extrapolateLeft: "clamp",
@@ -140,9 +144,12 @@ export const Titre: React.FC = () => {
           }),
         }}
       >
-        PIERRE GUEROULT · LUCAS POKRYWA · LUCAS CRESPY
-        <br />
-        CHAMSEDINE AMOUCHE · LUCAS LEMEILLEUR
+        <span>CHAMSEDINE AMOUCHE</span>
+        <span>LUCAS MEENS</span>
+        <span>LUCAS POKRYWA</span>
+        <span>LUCAS CRESPY</span>
+        <span>AMELIA BEN YOUSSEF</span>
+        <span>PIERRE GUEROULT</span>
       </Interactive.Div>
 
       {/* Out to black */}

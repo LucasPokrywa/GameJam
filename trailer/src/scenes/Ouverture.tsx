@@ -29,12 +29,12 @@ export const Ouverture: React.FC = () => {
         focusX={128}
         focusY={196}
       >
-        {/* The turret, drawn as the flame the game gives it */}
+        {/* The crossbow uses the current cooldown / firing poses from the game. */}
         <Sprite
-          src="tower.png"
+          src="arrow_tower.png"
           size={16}
-          cols={8}
-          col={Math.floor(frame / 3) % 8}
+          rows={2}
+          row={frame >= 52 && frame < 58 ? 1 : 0}
           x={152}
           y={200}
           style={{
