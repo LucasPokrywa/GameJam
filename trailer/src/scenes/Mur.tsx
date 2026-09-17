@@ -17,12 +17,12 @@ export const Mur: React.FC = () => {
   return (
     <AbsoluteFill style={{ backgroundColor: "#0b0908" }}>
       <RoomStage room="level4" zoom={7.5} focusX={128} focusY={128}>
-        {/* The turret, at the tile Level4 puts it on */}
+        {/* Current game crossbow: idle pose, then firing when each arrow leaves. */}
         <Sprite
-          src="tower.png"
+          src="arrow_tower.png"
           size={16}
-          cols={8}
-          col={Math.floor(frame / 3) % 8}
+          rows={2}
+          row={(frame >= 4 && frame < 10) || (frame >= 54 && frame < 60) ? 1 : 0}
           x={120}
           y={68}
           style={{

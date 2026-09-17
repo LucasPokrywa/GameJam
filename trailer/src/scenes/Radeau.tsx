@@ -37,10 +37,10 @@ export const Radeau: React.FC = () => {
           }}
         />
 
-        {/* The RAFT corpse a DROWNING leaves, floating on its tile */}
+        {/* The current 41 px raft corpse, displayed at the game's 32 px scale. */}
         <Sprite
           src="corpse_water.png"
-          size={16}
+          size={32}
           x={54}
           y={158}
           style={{
