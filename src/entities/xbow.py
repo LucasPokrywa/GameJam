@@ -9,12 +9,12 @@ from entities.entities import Entity
 SPRITE = os.path.join(os.path.dirname(__file__), "..", "..",
                       "assets", "entities", "tower", "arrow_tower.png")
 FRAME_SIZE = 16
-# arrow_tower.png stores its two states on separate rows. The idle row is
-# enough here: a shot is emitted in the same update that switches state.
+# arrow_tower.png stores its firing and cooldown poses vertically.
 FRAMES = 1
 SCALE_FACTOR = 2
 
 COOLDOWN_TINT = (200, 180, 180)
+FIRING_DURATION = 0.18
 
 
 class TurretState(Enum):
@@ -68,8 +68,11 @@ class Xbow(Entity):
             center_x=center_x,
             center_y=center_y,
         )
-        self.load_animation("xbow", SPRITE, FRAME_SIZE, FRAME_SIZE, FRAMES)
-        self.set_animation_direction("xbow")
+        self.load_animation("cooldown", SPRITE, FRAME_SIZE, FRAME_SIZE, FRAMES,
+                            row=0)
+        self.load_animation("firing", SPRITE, FRAME_SIZE, FRAME_SIZE, FRAMES,
+                            row=1)
+        self.set_animation_direction("cooldown")
         self.scale = SCALE_FACTOR
         self.frame_duration = 0.09
         self.acceleration = 0.0
@@ -98,8 +101,8 @@ class Xbow(Entity):
 
     def fire(self):
         self.state = TurretState.FIRING
+        self.set_animation_direction("firing")
         self._spawn_stake()
-        self.state = TurretState.COOLDOWN
         self._timer = 0.0
 
     def update(self, delta_time: float = 1 / 60):
@@ -108,6 +111,11 @@ class Xbow(Entity):
         if self.state is TurretState.COOLDOWN:
             if self._timer >= self.fire_interval:
                 self.fire()
+        elif self.state is TurretState.FIRING:
+            if self._timer >= FIRING_DURATION:
+                self.state = TurretState.COOLDOWN
+                self.set_animation_direction("cooldown")
+                self._timer = 0.0
 
         super().update(delta_time)
 
