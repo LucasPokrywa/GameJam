@@ -5,10 +5,11 @@ from entities.damage import DeathCause
 from entities.entities import Entity
 
 SPRITE = os.path.join(os.path.dirname(__file__), "..", "..",
-                      "assets", "entities", "tower", "bullet.png")
+                      "assets", "entities", "tower", "arrow.png")
 FRAME_SIZE = 16
-FRAMES = 8
-ARROW_BOX = (0, 5, 15, 12)
+# arrow.png is a single complete projectile, unlike the previous horizontal
+# bullet spritesheet.
+FRAMES = 1
 SCALE_FACTOR = 2
 
 
@@ -19,8 +20,8 @@ class Stake(Entity):
 
     def __init__(self, center_x, center_y, direction_x, direction_y, speed=400):
         super().__init__(
-            width=ARROW_BOX[2] - ARROW_BOX[0],
-            height=ARROW_BOX[3] - ARROW_BOX[1],
+            width=FRAME_SIZE,
+            height=FRAME_SIZE,
             center_x=center_x,
             center_y=center_y,
         )
@@ -28,8 +29,7 @@ class Stake(Entity):
         self.friction = 0.0
         self.max_speed = speed
 
-        self.load_animation("arrow", SPRITE, FRAME_SIZE, FRAME_SIZE, FRAMES,
-                            crop_box=ARROW_BOX)
+        self.load_animation("arrow", SPRITE, FRAME_SIZE, FRAME_SIZE, FRAMES)
         self.set_animation_direction("arrow")
         self.scale = SCALE_FACTOR
         self.frame_duration = 0.06
@@ -37,7 +37,8 @@ class Stake(Entity):
         # direction_x / direction_y must already be normalised; Turret does it.
         self.change_x = direction_x * speed
         self.change_y = direction_y * speed
-        self.angle = -math.degrees(math.atan2(direction_y, direction_x))
+        # The arrow artwork points west at angle 0, hence the half-turn.
+        self.angle = 180 - math.degrees(math.atan2(direction_y, direction_x))
 
         # Unlike the player, a bullet must leave the screen instead of
         # sticking to its edge.

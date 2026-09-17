@@ -7,11 +7,11 @@ from entities.damage import DeathCause
 from entities.entities import Entity
 
 SPRITE = os.path.join(os.path.dirname(__file__), "..", "..",
-                      "assets", "entities", "tower", "tower.png")
+                      "assets", "entities", "tower", "arrow_tower.png")
 FRAME_SIZE = 16
-FRAMES = 8
-# The flame sits in the middle of its frame; cropping keeps the hit box on it.
-FLAME_BOX = (2, 0, 14, 16)
+# arrow_tower.png stores its two states on separate rows. The idle row is
+# enough here: a shot is emitted in the same update that switches state.
+FRAMES = 1
 SCALE_FACTOR = 2
 
 COOLDOWN_TINT = (200, 180, 180)
@@ -63,14 +63,13 @@ class Xbow(Entity):
                  fire_interval=1.5, bullet_speed=400,
                  detection_range=420.0, aim_duration=0.45, orientation="east"):
         super().__init__(
-            width=FLAME_BOX[2] - FLAME_BOX[0],
-            height=FLAME_BOX[3] - FLAME_BOX[1],
+            width=FRAME_SIZE,
+            height=FRAME_SIZE,
             center_x=center_x,
             center_y=center_y,
         )
-        self.load_animation("flame", SPRITE, FRAME_SIZE, FRAME_SIZE, FRAMES,
-                            crop_box=FLAME_BOX)
-        self.set_animation_direction("flame")
+        self.load_animation("xbow", SPRITE, FRAME_SIZE, FRAME_SIZE, FRAMES)
+        self.set_animation_direction("xbow")
         self.scale = SCALE_FACTOR
         self.frame_duration = 0.09
         self.acceleration = 0.0
@@ -79,7 +78,12 @@ class Xbow(Entity):
 
         self.level = level
         self.player = player
+        angles = {"east": 180, "north": 90, "west": 0, "south": -90}
+        if orientation not in angles:
+            raise ValueError(f"Unsupported Xbow orientation: {orientation!r}")
         self.orientation = orientation
+        # The artwork faces west by default; rotate it with its projectile.
+        self.angle = angles[orientation]
         self.fire_interval = fire_interval   # reload after a shot
         self.bullet_speed = bullet_speed
         self.detection_range = detection_range
