@@ -82,7 +82,11 @@ class Slot(Entity):
         return self.corpse is not None
 
     def accepts(self, corpse) -> bool:
-        return not self.is_filled and corpse.corpse_type is self.required_type
+        if not self.is_filled:
+            if self.required_type is CorpseType.RAFT and corpse.corpse_type is CorpseType.EMPALED:
+                return True
+            return corpse.corpse_type is self.required_type
+        return False
 
     def fill(self, corpse):
         self.corpse = corpse
@@ -158,7 +162,8 @@ class SacrificeAltar:
             return False
 
         slot.fill(corpse)
-        self.current_sacrifices[corpse.corpse_type] += 1
+        count_type = CorpseType.RAFT if (corpse.corpse_type is CorpseType.EMPALED and slot.required_type is CorpseType.RAFT) else corpse.corpse_type
+        self.current_sacrifices[count_type] += 1
         self.update_state()
         return True
 
