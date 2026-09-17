@@ -561,6 +561,8 @@ class Level:
             self.player.on_raft = None
             self.player.raft_jump_target = None
             self.player.raft_jump_start = None
+            self.player.raft_jump_timer = 0.0
+            self.player.scale = self.player.base_scale
         else:
             self.player.on_raft = raft
 

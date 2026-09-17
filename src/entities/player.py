@@ -287,7 +287,11 @@ class Player(Entity):
         self.is_armed = True
 
     def _reset_base_scale(self):
-        self.base_scale = PLAYER_HEIGHT / (CHARACTER_BOX[3] - CHARACTER_BOX[1])
+        # Keep the current window-scaled size as the true reference. The level
+        # recalculates `base_scale` with `scale_to_window()`, so overwriting it
+        # here with the raw sprite size breaks the respawn sizing.
+        if not hasattr(self, "base_scale") or self.base_scale is None:
+            self.base_scale = PLAYER_HEIGHT / (CHARACTER_BOX[3] - CHARACTER_BOX[1])
         self.scale = self.base_scale
         self._death_start_scale = self.base_scale
 
@@ -304,10 +308,9 @@ class Player(Entity):
         """Small leap used when bridging across a floating corpse."""
         self.change_x = 0
         self.change_y = 0
-        self.moving_up = False
-        self.moving_down = False
-        self.moving_left = False
-        self.moving_right = False
+        # Keep the current direction key pressed while the jump animation is
+        # playing; otherwise the player must release and press it again to
+        # continue moving bridge-to-bridge with the same input intent.
         self.raft_jump_start = (self.center_x, self.center_y)
         self.raft_jump_target = (target_x, target_y)
         self.raft_jump_timer = 0.0
