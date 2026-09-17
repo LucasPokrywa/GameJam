@@ -763,14 +763,15 @@ class Door(Entity):
         if self.closed_layer is not None:
             self.closed_layer.remove_from_sprite_lists()
 
-    def close(self):
+    def close(self, background=None, walls=None):
         if not self.is_open:
             return
         self.is_open = False
-        if self.closed_layer is not None and self.closed_layer not in self.background:
-            self.background.append(self.closed_layer)
-        if self not in self.walls:
-            self.walls.append(self)
+        if self.closed_layer is not None and background is not None:
+            if self.closed_layer not in background:
+                background.append(self.closed_layer)
+        if walls is not None and self not in walls:
+            walls.append(self)
 
 
 class BurnableObstacle(Entity):
@@ -1170,7 +1171,7 @@ class ButtonMapLevel(Level):
         self.door.open()
 
     def _close_door(self, source=None):
-        self.door.close()
+        self.door.close(self.background, self.walls)
 
     def update(self, delta_time: float):
         super().update(delta_time)
