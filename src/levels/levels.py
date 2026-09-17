@@ -229,7 +229,11 @@ class Level:
         base = current[0] if hasattr(current, "__getitem__") else current
         # Rounded: a fractional scale spreads one art pixel over 3 screen
         # pixels here and 4 there, which reads as blur on pixel art.
-        sprite.scale = max(1, round(base * factor))
+        new_scale = max(1, round(base * factor))
+        sprite.scale = new_scale
+
+        if hasattr(sprite, "base_scale"):
+            sprite.base_scale = new_scale
 
         if not speeds:
             return sprite
