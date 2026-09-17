@@ -39,6 +39,11 @@ SPRITES = {
     CorpseType.BONES: "bones.png",
     CorpseType.RAFT: "water.png",
 }
+TEXTURE_SIZES = {
+    CorpseType.WALL: 16, 
+    CorpseType.BONES: 16, 
+    CorpseType.RAFT: 41,
+}
 FALLBACK_SPRITE = "corpse.png"
 FALLBACK_TINTS = {
     CorpseType.WALL: (150, 155, 165),
@@ -86,13 +91,19 @@ class Corpse(Entity):
             path = os.path.join(ASSETS_DIR, FALLBACK_SPRITE)
             tint = FALLBACK_TINTS[self.corpse_type]
 
+        # Taille spécifique au type de texture, ou taille par défaut
+        frame_size = TEXTURE_SIZES.get(self.corpse_type, FRAME_SIZE)
+
         name = self.corpse_type.value
-        self.load_animation(name, path, FRAME_SIZE, FRAME_SIZE, 1)
+        self.load_animation(name, path, frame_size, frame_size, 1)
         self.set_animation_direction(name)
-        self.scale = DISPLAY_SIZE / FRAME_SIZE * SCALE_FACTOR
+
+        # Calcul du scale adapté à la taille de cette texture
+        scale_factor = (DISPLAY_SIZE / FRAME_SIZE) * 8
+        self.scale = (DISPLAY_SIZE / frame_size) * scale_factor
 
         if tint is not None:
-            self.color = tint   # after load_animation, which replaces the texture
+            self.color = tint
 
     def blocks_movement(self) -> bool:
         return self.corpse_type is CorpseType.WALL and self.state is CorpseState.ACTIVE
