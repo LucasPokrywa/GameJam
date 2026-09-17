@@ -15,6 +15,7 @@ class CorpseType(Enum):
     WALL = "wall"
     BONES = "bones"
     RAFT = "raft"
+    EMPALED = "empaled"
 
 
 class CorpseState(Enum):
@@ -38,12 +39,14 @@ SPRITES = {
     CorpseType.WALL: "corpse.png",
     CorpseType.BONES: "bones.png",
     CorpseType.RAFT: "water.png",
+    CorpseType.EMPALED: "empaled.png",
 }
 FALLBACK_SPRITE = "corpse.png"
 FALLBACK_TINTS = {
     CorpseType.WALL: (150, 155, 165),
     CorpseType.BONES: (255, 240, 200),
     CorpseType.RAFT: (90, 130, 170),
+    CorpseType.EMPALED: (180, 170, 170),
 }
 
 
@@ -72,9 +75,11 @@ class Corpse(Entity):
         self._load_sprite()
 
     @classmethod
-    def from_death_cause(cls, death_cause, center_x, center_y):
+    def from_death_cause(cls, death_cause, center_x, center_y, *, was_impaled=False):
         """None when the cause leaves no body, e.g. falling into the void."""
         corpse_type = CAUSE_TO_TYPE[death_cause]
+        if death_cause is DeathCause.DROWNING and was_impaled:
+            corpse_type = CorpseType.EMPALED
         if corpse_type is None:
             return None
         return cls(center_x, center_y, corpse_type)
@@ -105,7 +110,7 @@ class Corpse(Entity):
 
     def bridges_hazard(self) -> bool:
         """A floating body makes the water under it walkable."""
-        return self.corpse_type is CorpseType.RAFT and self.state is CorpseState.ACTIVE
+        return self.corpse_type in (CorpseType.RAFT, CorpseType.EMPALED) and self.state is CorpseState.ACTIVE
 
     def is_sacrificable(self) -> bool:
         return self.state is CorpseState.ACTIVE
