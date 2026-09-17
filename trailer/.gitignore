@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# Build and rendered output
+dist/
+out/
+
+# Local tooling and machine-specific files
+.claude/
+.DS_Store
+.env
+.env.*
+*.log
